@@ -1,0 +1,42 @@
+[changelog]
+header = """
+# 更新日志\n
+"""
+body = """
+{% for group, commits in commits | group_by(attribute="group") %}
+    ### {{ group | upper_first }}
+    {% for commit in commits %}
+        - {{ commit.message | upper_first }}
+        {%- if commit.body %}
+{{ commit.body | indent(prefix="          ") }}
+        {%- endif %}\
+    {% endfor %}
+{% endfor %}\n
+"""
+footer = ""
+trim = true
+
+[git]
+conventional_commits = true
+filter_unconventional = false
+split_commits = false
+commit_preprocessors = []
+commit_parsers = [
+    { message = "^feat", group = "✨ 新功能" },
+    { message = "^fix", group = "🐛 修复" },
+    { message = "^doc", group = "📚 文档" },
+    { message = "^perf", group = "⚡ 性能" },
+    { message = "^refactor", group = "♻️ 重构" },
+    { message = "^style", group = "💄 样式" },
+    { message = "^test", group = "✅ 测试" },
+    { message = "^chore", group = "🔧 杂项" },
+    { message = "^build", group = "📦 构建" },
+    { message = "^ci", group = "👷 CI" },
+]
+protect_breaking_commits = false
+filter_commits = false
+tag_pattern = "v[0-9].*"
+skip_tags = ""
+ignore_tags = ""
+topo_order = false
+sort_commits = "oldest"

@@ -1,0 +1,119 @@
+# 主分支推送 - 同步到 GitHub
+main:
+  push:
+    - runner:
+        tags: cnb:arch:amd64
+        cpus: 1
+      imports: https://cnb.cool/dmxapi/claude-code-my/-/blob/main/env.yml
+      stages:
+        - name: sync to github with rebase
+          image: tencentcom/git-sync
+          settings:
+            target_url: https://github.com/YeSongYun/openclaw_config.git
+            auth_type: https
+            username: ${GIT_USERNAME}
+            password: ${GIT_ACCESS_TOKEN}
+            sync_mode: rebase
+
+# Tag 推送 - 自动发布 Release
+$:
+  tag_push:
+    - runner:
+        tags: cnb:arch:amd64
+        cpus: 2
+      imports: https://cnb.cool/dmxapi/claude-code-my/-/blob/main/env.yml
+      stages:
+        # 0. 同步 Tag 到 GitHub
+        - name: sync tag to github
+          image: alpine/git
+          script:
+            - git remote add github https://${GIT_USERNAME}:${GIT_ACCESS_TOKEN}@github.com/YeSongYun/openclaw_config.git || true
+            - git push github ${CNB_BRANCH} --force
+
+        # 1. 生成更新日志
+        - name: generate changelog
+          image: cnbcool/default-build-env
+          script:
+            - curl -sSL https://github.com/orhun/git-cliff/releases/download/v2.7.0/git-cliff-2.7.0-x86_64-unknown-linux-gnu.tar.gz | tar xz
+            - git fetch --tags origin
+            - ./git-cliff-2.7.0/git-cliff --config cliff.toml --latest --strip header
+          exports:
+            stdout: RELEASE_NOTES
+
+        # 2. 构建 Linux 和 Windows 版本
+        - name: build linux and windows
+          image: ghcr.io/abjrcode/cross-wails:v2.6.0
+          script:
+            - cd frontend && npm install && cd ..
+            # Linux AMD64
+            - CC=x86_64-linux-gnu-gcc wails build -platform linux/amd64 -ldflags "-s -w" -o openclaw-config-${CNB_BRANCH}-linux-amd64
+            - mv build/bin/openclaw-config-${CNB_BRANCH}-linux-amd64 ./
+            # Linux ARM64
+            - CC=aarch64-linux-gnu-gcc wails build -platform linux/arm64 -ldflags "-s -w" -o openclaw-config-${CNB_BRANCH}-linux-arm64
+            - mv build/bin/openclaw-config-${CNB_BRANCH}-linux-arm64 ./
+            # Windows AMD64
+            - CC=x86_64-w64-mingw32-gcc wails build -platform windows/amd64 -ldflags "-s -w" -o openclaw-config-${CNB_BRANCH}-windows-amd64.exe
+            - mv build/bin/openclaw-config-${CNB_BRANCH}-windows-amd64.exe ./
+
+        # 3. 创建 Release
+        - name: create release
+          type: git:release
+          options:
+            title: OpenClaw Config ${CNB_BRANCH}
+            description: |
+              ## OpenClaw Config 配置工具 ${CNB_BRANCH}
+
+              一键配置工具。
+
+              ---
+
+              ${RELEASE_NOTES}
+
+              ---
+
+              ### 📥 下载
+
+              | 平台 | 架构 | 文件 |
+              |------|------|------|
+              | Windows | x64 | `openclaw-config-${CNB_BRANCH}-windows-amd64.exe` |
+              | Linux | x64 | `openclaw-config-${CNB_BRANCH}-linux-amd64` |
+              | Linux | ARM64 | `openclaw-config-${CNB_BRANCH}-linux-arm64` |
+              | macOS | Universal | `openclaw-config-${CNB_BRANCH}-macos-universal`（手动上传） |
+
+              ---
+
+              ### 🛠️ 使用说明
+
+              #### Windows
+              下载后直接双击运行 `openclaw-config-${CNB_BRANCH}-windows-amd64.exe`
+
+              #### Linux
+              ```bash
+              # 下载并添加执行权限后运行
+              chmod +x openclaw-config-${CNB_BRANCH}-linux-amd64
+              ./openclaw-config-${CNB_BRANCH}-linux-amd64
+              ```
+
+              #### macOS
+              下载后双击运行，首次运行可能需要在「系统设置 > 隐私与安全性」中允许
+
+              ---
+
+              ### 🔗 相关链接
+
+              - [项目主页](https://cnb.cool/dmxapi/openclaw_config)
+
+        # 4. 上传附件到 Release
+        - name: upload attachments
+          image: cnbcool/attachments
+          settings:
+            attachments:
+              - "./openclaw-config-${CNB_BRANCH}-*"
+            ttl: 0
+
+        # 5. 清理旧版本，只保留最近3个
+        - name: cleanup old releases
+          image: docker.cnb.cool/cnb/plugins/cnbcool/release-clean:latest
+          settings:
+            filter: "RECENT_N=3"
+            debug: false
