@@ -40,22 +40,7 @@ $:
           exports:
             stdout: RELEASE_NOTES
 
-        # 2. 构建 Linux 和 Windows 版本
-        - name: build linux and windows
-          image: ghcr.io/abjrcode/cross-wails:v2.6.0
-          script:
-            - cd frontend && npm install && cd ..
-            # Linux AMD64
-            - CC=x86_64-linux-gnu-gcc wails build -platform linux/amd64 -ldflags "-s -w" -o openclaw-config-${CNB_BRANCH}-linux-amd64
-            - mv build/bin/openclaw-config-${CNB_BRANCH}-linux-amd64 ./
-            # Linux ARM64
-            - CC=aarch64-linux-gnu-gcc wails build -platform linux/arm64 -ldflags "-s -w" -o openclaw-config-${CNB_BRANCH}-linux-arm64
-            - mv build/bin/openclaw-config-${CNB_BRANCH}-linux-arm64 ./
-            # Windows AMD64
-            - CC=x86_64-w64-mingw32-gcc wails build -platform windows/amd64 -ldflags "-s -w" -o openclaw-config-${CNB_BRANCH}-windows-amd64.exe
-            - mv build/bin/openclaw-config-${CNB_BRANCH}-windows-amd64.exe ./
-
-        # 3. 创建 Release
+        # 2. 创建 Release
         - name: create release
           type: git:release
           options:
@@ -75,23 +60,22 @@ $:
 
               | 平台 | 架构 | 文件 |
               |------|------|------|
-              | Windows | x64 | `openclaw-config-${CNB_BRANCH}-windows-amd64.exe` |
-              | Linux | x64 | `openclaw-config-${CNB_BRANCH}-linux-amd64` |
-              | Linux | ARM64 | `openclaw-config-${CNB_BRANCH}-linux-arm64` |
-              | macOS | Universal | `openclaw-config-${CNB_BRANCH}-macos-universal`（手动上传） |
+              | Windows | x64 | `openclaw-config-windows` |
+              | macOS | Universal | `openclaw-config-macos` |
+              | Linux | x64 | `openclaw-config-linux` |
 
               ---
 
               ### 🛠️ 使用说明
 
               #### Windows
-              下载后直接双击运行 `openclaw-config-${CNB_BRANCH}-windows-amd64.exe`
+              下载后直接双击运行 `openclaw-config-windows`
 
               #### Linux
               ```bash
               # 下载并添加执行权限后运行
-              chmod +x openclaw-config-${CNB_BRANCH}-linux-amd64
-              ./openclaw-config-${CNB_BRANCH}-linux-amd64
+              chmod +x openclaw-config-linux
+              ./openclaw-config-linux
               ```
 
               #### macOS
@@ -103,15 +87,15 @@ $:
 
               - [项目主页](https://cnb.cool/dmxapi/openclaw_config)
 
-        # 4. 上传附件到 Release
+        # 3. 上传附件到 Release
         - name: upload attachments
           image: cnbcool/attachments
           settings:
             attachments:
-              - "./openclaw-config-${CNB_BRANCH}-*"
+              - "./openclaw-config-*"
             ttl: 0
 
-        # 5. 清理旧版本，只保留最近3个
+        # 4. 清理旧版本，只保留最近3个
         - name: cleanup old releases
           image: docker.cnb.cool/cnb/plugins/cnbcool/release-clean:latest
           settings:
