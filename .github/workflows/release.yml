@@ -1,0 +1,134 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+env:
+  NODE_OPTIONS: "--max-old-space-size=4096"
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        build:
+          - name: 'openclaw-config'
+            platform: 'linux/amd64'
+            os: 'ubuntu-latest'
+          - name: 'openclaw-config'
+            platform: 'windows/amd64'
+            os: 'windows-latest'
+          - name: 'openclaw-config'
+            platform: 'darwin/universal'
+            os: 'macos-latest'
+
+    runs-on: ${{ matrix.build.os }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Build wails
+        uses: dAppServer/wails-build-action@v2.2
+        id: build
+        with:
+          build-name: ${{ matrix.build.name }}
+          build-platform: ${{ matrix.build.platform }}
+          package: false
+          go-version: '1.21'
+
+      - name: Rename binary (Linux)
+        if: matrix.build.os == 'ubuntu-latest'
+        run: mv build/bin/${{ matrix.build.name }} build/bin/${{ matrix.build.name }}-linux-amd64
+
+      - name: Rename binary (Windows)
+        if: matrix.build.os == 'windows-latest'
+        run: mv build/bin/${{ matrix.build.name }}.exe build/bin/${{ matrix.build.name }}-windows-amd64.exe
+
+      - name: Rename binary (macOS)
+        if: matrix.build.os == 'macos-latest'
+        run: mv build/bin/${{ matrix.build.name }}.app build/bin/${{ matrix.build.name }}-macos-universal.app
+
+      - name: Compress macOS app
+        if: matrix.build.os == 'macos-latest'
+        run: |
+          cd build/bin
+          zip -r ${{ matrix.build.name }}-macos-universal.zip ${{ matrix.build.name }}-macos-universal.app
+          rm -rf ${{ matrix.build.name }}-macos-universal.app
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.build.name }}-${{ matrix.build.os }}
+          path: build/bin/*
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Generate changelog
+        id: changelog
+        uses: orhun/git-cliff-action@v3
+        with:
+          config: cliff.toml
+          args: --latest --strip header
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: OpenClaw Config ${{ github.ref_name }}
+          body: |
+            ## OpenClaw Config 配置工具 ${{ github.ref_name }}
+
+            一键配置工具。
+
+            ---
+
+            ${{ steps.changelog.outputs.content }}
+
+            ---
+
+            ### 下载
+
+            | 平台 | 架构 | 文件 |
+            |------|------|------|
+            | Windows | x64 | `openclaw-config-windows-amd64.exe` |
+            | Linux | x64 | `openclaw-config-linux-amd64` |
+            | macOS | Universal | `openclaw-config-macos-universal.zip` |
+
+            ---
+
+            ### 使用说明
+
+            #### Windows
+            下载后直接双击运行 `openclaw-config-windows-amd64.exe`
+
+            #### Linux
+            ```bash
+            chmod +x openclaw-config-linux-amd64
+            ./openclaw-config-linux-amd64
+            ```
+
+            #### macOS
+            解压 zip 文件，双击运行 app，首次运行可能需要在「系统设置 > 隐私与安全性」中允许
+
+          files: |
+            artifacts/*
+          draft: false
+          prerelease: false
