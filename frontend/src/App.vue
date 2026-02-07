@@ -18,6 +18,7 @@ import ConfigForm from './components/ConfigForm.vue'
         <li><code>openclaw gateway restart</code> - 重启网关使配置生效</li>
         <li><code>/model</code> - 在聊天中查看/切换模型</li>
         <li><code>openclaw models list</code> - 列出所有可用模型</li>
+        <li><code>openclaw-cn tui</code> - 打开终端聊天助手</li>
       </ul>
     </div>
   </div>

@@ -134,10 +134,7 @@ async function handleSave() {
     </button>
 
     <div v-if="saveSuccess" class="success-message">
-      <h4>配置已保存！</h4>
-      <p>请执行以下步骤使配置生效：</p>
-      <pre>openclaw gateway restart</pre>
-      <p>或在聊天中使用 <code>/model</code> 命令切换模型</p>
+      <h4>配置已保存，模型已切换！</h4>
     </div>
 
     <div v-if="errorMessage" class="error-message">
