@@ -107,10 +107,27 @@ $:
               ./openclaw-config-macos-arm64
               ```
 
+              > **macOS 安全提示**：首次运行提示"无法验证开发者"时，可右键点击 → 选择"打开"，或执行：
+              > ```bash
+              > xattr -rd com.apple.quarantine ./openclaw-config-macos-arm64
+              > ```
+
               #### Windows
+
+              在文件所在目录按住 **Shift** 并右键 → 选择"在此处打开 PowerShell 窗口"，执行：
+
+              ```powershell
+              .\openclaw-config-windows-amd64.exe
               ```
-              openclaw-config-windows-amd64.exe
-              ```
+
+              ---
+
+              ### ⚙️ 配置说明
+
+              启动后按提示依次填写：
+              - **Base URL**：默认 `https://www.dmxapi.cn/v1`，通常无需修改
+              - **API Key**：在 [dmxapi.cn](https://www.dmxapi.cn) 申请，格式为 `sk-...`
+              - **模型**：从预设列表选择，或选"自定义模型..."手动输入
 
               ---
 
