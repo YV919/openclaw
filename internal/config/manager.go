@@ -14,7 +14,7 @@ const (
 	ConfigFile       = "openclaw.json"
 	AuthProfilesDir  = "agents/main/agent"
 	AuthProfilesFile = "auth-profiles.json"
-	DefaultBaseUrl   = "https://www.dmxapi.cn"
+	DefaultBaseUrl   = "https://www.dmxapi.cn/v1"
 	ProviderName     = "dmxapi"
 )
 
@@ -177,6 +177,45 @@ func (cm *ConfigManager) SaveApiKey(key string) error {
 	}
 
 	return cm.SaveAuthProfiles(authProfiles)
+}
+
+// UpdateModelsJson 直接更新 models.json 中的 dmxapi provider baseUrl 和 api 字段。
+// 必要原因：openclaw 的 ensureOpenClawModelsJson 合并逻辑会保留 models.json 中的旧 baseUrl，
+// 即使 openclaw.json 已更新、网关已重启，models.json 中的旧值也会被保留。
+func (cm *ConfigManager) UpdateModelsJson(baseUrl, apiFormat string) error {
+	modelsPath := filepath.Join(cm.homeDir, OpenClawDir, AuthProfilesDir, "models.json")
+
+	data, err := os.ReadFile(modelsPath)
+	if err != nil {
+		// models.json 不存在时忽略（首次运行或 openclaw 尚未初始化）
+		// openclaw 启动时会从 openclaw.json 重新生成，届时会使用正确的 baseUrl
+		return nil
+	}
+
+	var raw map[string]interface{}
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return nil // 格式不对就跳过，不阻断主流程
+	}
+
+	providers, ok := raw["providers"].(map[string]interface{})
+	if !ok {
+		return nil
+	}
+	dmxapi, ok := providers[ProviderName].(map[string]interface{})
+	if !ok {
+		return nil // dmxapi 尚未注册，跳过（openclaw 启动时会从 openclaw.json 创建）
+	}
+
+	dmxapi["baseUrl"] = baseUrl
+	dmxapi["api"] = apiFormat
+	providers[ProviderName] = dmxapi
+	raw["providers"] = providers
+
+	updated, err := json.MarshalIndent(raw, "", "  ")
+	if err != nil {
+		return nil
+	}
+	return os.WriteFile(modelsPath, append(updated, '\n'), 0600)
 }
 
 // GetDMXAPIConfig 获取当前 DMXAPI 配置
@@ -365,6 +404,9 @@ func (cm *ConfigManager) UpdateDMXAPIConfig(dmxConfig *DMXAPIConfig) error {
 	if err := cm.SaveConfig(config); err != nil {
 		return err
 	}
+
+	// 同步 models.json 中的 baseUrl/api，绕过 openclaw 合并逻辑对旧值的保留
+	_ = cm.UpdateModelsJson(dmxConfig.BaseUrl, DetectAPIFormat(dmxConfig.CurrentModel))
 
 	// 保存 API Key
 	if dmxConfig.ApiKey != "" {

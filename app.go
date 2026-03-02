@@ -27,6 +27,10 @@ func (a *App) Run() error {
 	if a.configManager != nil {
 		if cur, err := a.configManager.GetDMXAPIConfig(); err == nil {
 			baseUrl, apiKey, model = cur.BaseUrl, cur.ApiKey, cur.CurrentModel
+			// 迁移旧默认值（无 /v1）到新默认值，避免老用户需要手动重新填写
+			if baseUrl == "https://www.dmxapi.cn" {
+				baseUrl = "https://www.dmxapi.cn/v1"
+			}
 		}
 	}
 
@@ -55,7 +59,7 @@ func (a *App) Run() error {
 
 	selected := model
 	form := huh.NewForm(huh.NewGroup(
-		huh.NewInput().Title("Base URL").Placeholder("https://www.dmxapi.cn").Value(&baseUrl),
+		huh.NewInput().Title("Base URL").Placeholder("https://www.dmxapi.cn/v1").Value(&baseUrl),
 		huh.NewInput().Title("API Key").Placeholder("sk-...").Value(&apiKey),
 		huh.NewSelect[string]().Title("模型").Options(opts...).Value(&selected),
 	))
