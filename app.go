@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"os/exec"
 	"strings"
 
 	"github.com/charmbracelet/huh"
@@ -65,6 +66,7 @@ func (a *App) Run() error {
 	// 若选了自定义：第二段表单收集模型名
 	finalModel := selected
 	if selected == "__custom__" {
+		customModel = ""  // 重置，避免旧模型名拼接
 		f2 := huh.NewForm(huh.NewGroup(
 			huh.NewInput().Title("自定义模型名称").Value(&customModel),
 		))
@@ -102,11 +104,15 @@ func (a *App) Run() error {
 		return fmt.Errorf("保存配置失败: %w", err)
 	}
 
-	printSuccess(dmxConfig, config.DetectAPIFormat(finalModel))
+	// 触发网关重启，让 api 格式变更真正生效
+	fmt.Println("\n  正在重启 openclaw 网关，请稍候...")
+	restartErr := exec.Command("openclaw", "gateway", "restart").Run()
+
+	printSuccess(dmxConfig, config.DetectAPIFormat(finalModel), restartErr)
 	return nil
 }
 
-func printSuccess(cfg *config.DMXAPIConfig, apiFormat string) {
+func printSuccess(cfg *config.DMXAPIConfig, apiFormat string, restartErr error) {
 	green := lipgloss.Color("42")
 
 	info := fmt.Sprintf(
@@ -122,10 +128,15 @@ func printSuccess(cfg *config.DMXAPIConfig, apiFormat string) {
 	fmt.Println()
 	fmt.Println(box)
 
+	restartNote := "✓ 网关已重启，新格式立即生效。"
+	if restartErr != nil {
+		restartNote = "⚠ 网关重启失败，请手动执行：openclaw gateway restart"
+	}
+
 	huh.NewForm(huh.NewGroup( //nolint:errcheck — Note 表单无实质错误
 		huh.NewNote().
 			Title("提示").
-			Description("配置已立即生效，无需重启。").
+			Description(restartNote).
 			Next(true).
 			NextLabel("按 Enter 退出"),
 	)).Run() //nolint:errcheck
