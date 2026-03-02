@@ -102,13 +102,33 @@ func (a *App) Run() error {
 		return fmt.Errorf("保存配置失败: %w", err)
 	}
 
-	// 成功提示
-	fmt.Printf("\n✓ 配置已保存！\n")
-	fmt.Printf("  Base URL : %s\n", dmxConfig.BaseUrl)
-	fmt.Printf("  模型     : %s\n", dmxConfig.CurrentModel)
-	fmt.Printf("  API Key  : %s\n", dmxConfig.ApiKey)
-	fmt.Printf("\n执行以下命令使配置生效:\n  openclaw gateway restart\n\n")
+	printSuccess(dmxConfig)
 	return nil
+}
+
+func printSuccess(cfg *config.DMXAPIConfig) {
+	green := lipgloss.Color("42")
+
+	info := fmt.Sprintf(
+		"  Base URL : %s\n  模型     : %s\n  API Key  : %s",
+		cfg.BaseUrl, cfg.CurrentModel, cfg.ApiKey,
+	)
+	box := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(green).
+		Padding(1, 2).
+		Render("✓ 配置已保存！\n\n" + info)
+
+	fmt.Println()
+	fmt.Println(box)
+
+	huh.NewForm(huh.NewGroup( //nolint:errcheck — Note 表单无实质错误
+		huh.NewNote().
+			Title("下一步").
+			Description("执行以下命令使配置生效:\n  `openclaw gateway restart`").
+			Next(true).
+			NextLabel("按 Enter 退出"),
+	)).Run() //nolint:errcheck
 }
 
 func printBanner() {
