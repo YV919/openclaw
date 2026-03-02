@@ -2,14 +2,14 @@ package models
 
 // PresetModels 预设模型列表
 var PresetModels = []string{
-	"claude-opus-4-6-cc",
+	"claude-opus-4-6",
+	"claude-sonnet-4-6",
+	"MiniMax-M2.5-cc",
+	"glm-5-cc",
+	"hunyuan-2.0-thinking-20251109-cc",
 	"kimi-k2.5-cc",
-	"claude-opus-4-5-20251101-cc",
-	"claude-haiku-4-5-20251001-cc",
-	"claude-sonnet-4-5-20250929-cc",
-	"MiniMax-M2.1-cc",
-	"MiniMax-M2-cc",
-	"DeepSeek-V3.2-cc",
-	"iquest-coder-v1-40b-instruct-cc",
-	"glm-4.7-cc",
+	"gpt-5.3-codex",
+	"gpt-5.3-codex-spark",
+	"gemini-3.1-pro-preview",
+	"gemini-3-flash-preview",
 }
