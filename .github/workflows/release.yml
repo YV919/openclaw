@@ -46,6 +46,8 @@ jobs:
   release:
     needs: build
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
 
     steps:
       - uses: actions/checkout@v4
@@ -69,6 +71,7 @@ jobs:
 
       - uses: softprops/action-gh-release@v2
         with:
+          token: ${{ secrets.GITHUB_TOKEN }}
           name: OpenClaw Config ${{ github.ref_name }}
           body: |
             ## OpenClaw Config 配置工具 ${{ github.ref_name }}
