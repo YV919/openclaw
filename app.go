@@ -102,16 +102,16 @@ func (a *App) Run() error {
 		return fmt.Errorf("保存配置失败: %w", err)
 	}
 
-	printSuccess(dmxConfig)
+	printSuccess(dmxConfig, config.DetectAPIFormat(finalModel))
 	return nil
 }
 
-func printSuccess(cfg *config.DMXAPIConfig) {
+func printSuccess(cfg *config.DMXAPIConfig, apiFormat string) {
 	green := lipgloss.Color("42")
 
 	info := fmt.Sprintf(
-		"  Base URL : %s\n  模型     : %s\n  API Key  : %s",
-		cfg.BaseUrl, cfg.CurrentModel, cfg.ApiKey,
+		"  Base URL : %s\n  模型     : %s\n  API Key  : %s\n  API 格式 : %s",
+		cfg.BaseUrl, cfg.CurrentModel, cfg.ApiKey, apiFormat,
 	)
 	box := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
@@ -151,7 +151,7 @@ func printBanner() {
 		Render("  ────────────────────────────────────────────────")
 
 	note := lipgloss.NewStyle().Foreground(gray).
-		Render("  注意：只能使用兼容 v1/messages 接口的模型")
+		Render("  支持 Claude / Gemini / GPT-5 / 其他兼容模型，自动检测 API 格式")
 
 	fmt.Println(logo)
 	fmt.Println()

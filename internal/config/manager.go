@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
@@ -223,6 +224,24 @@ func (cm *ConfigManager) GetDMXAPIConfig() (*DMXAPIConfig, error) {
 	return dmxConfig, nil
 }
 
+// DetectAPIFormat 根据模型 ID 自动检测应使用的 API 格式
+func DetectAPIFormat(modelID string) string {
+	lower := strings.ToLower(modelID)
+	if strings.HasPrefix(lower, "claude") {
+		return "anthropic-messages"
+	}
+	if strings.HasSuffix(lower, "-cc") {
+		return "anthropic-messages"
+	}
+	if strings.HasPrefix(lower, "gemini") {
+		return "google-generative-ai"
+	}
+	if strings.HasPrefix(lower, "gpt-5") {
+		return "openai-responses"
+	}
+	return "openai-completions"
+}
+
 // UpdateDMXAPIConfig 更新 DMXAPI 配置
 func (cm *ConfigManager) UpdateDMXAPIConfig(dmxConfig *DMXAPIConfig) error {
 	config, err := cm.LoadConfig()
@@ -249,10 +268,8 @@ func (cm *ConfigManager) UpdateDMXAPIConfig(dmxConfig *DMXAPIConfig) error {
 	// 更新 BaseUrl
 	dmxapi["baseUrl"] = dmxConfig.BaseUrl
 
-	// 确保 api 字段存在
-	if dmxapi["api"] == nil {
-		dmxapi["api"] = "anthropic-messages"
-	}
+	// 根据模型名称自动检测并更新 api 格式
+	dmxapi["api"] = DetectAPIFormat(dmxConfig.CurrentModel)
 
 	// 确保 models 数组存在并包含当前模型
 	modelId := dmxConfig.CurrentModel
