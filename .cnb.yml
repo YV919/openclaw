@@ -30,7 +30,21 @@ $:
             - git remote add github https://${GIT_USERNAME}:${GIT_ACCESS_TOKEN}@github.com/YeSongYun/openclaw_config.git || true
             - git push github ${CNB_BRANCH} --force
 
-        # 1. 生成更新日志
+        # 1. 构建全平台
+        - name: build all platforms
+          image: golang:1.23-alpine
+          script:
+            - apk add --no-cache git
+            - go mod download
+            - mkdir -p dist
+            - GOOS=linux   GOARCH=amd64 CGO_ENABLED=0 go build -ldflags "-s -w -X main.Version=${CNB_BRANCH}" -o dist/openclaw-config-linux-amd64 .
+            - GOOS=linux   GOARCH=arm64 CGO_ENABLED=0 go build -ldflags "-s -w -X main.Version=${CNB_BRANCH}" -o dist/openclaw-config-linux-arm64 .
+            - GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -ldflags "-s -w -X main.Version=${CNB_BRANCH}" -o dist/openclaw-config-windows-amd64.exe .
+            - GOOS=darwin  GOARCH=amd64 CGO_ENABLED=0 go build -ldflags "-s -w -X main.Version=${CNB_BRANCH}" -o dist/openclaw-config-darwin-amd64 .
+            - GOOS=darwin  GOARCH=arm64 CGO_ENABLED=0 go build -ldflags "-s -w -X main.Version=${CNB_BRANCH}" -o dist/openclaw-config-darwin-arm64 .
+            - ls -lh dist/
+
+        # 2. 生成更新日志
         - name: generate changelog
           image: cnbcool/default-build-env
           script:
@@ -40,7 +54,7 @@ $:
           exports:
             stdout: RELEASE_NOTES
 
-        # 2. 创建 Release
+        # 3. 创建 Release
         - name: create release
           type: git:release
           options:
@@ -48,7 +62,7 @@ $:
             description: |
               ## OpenClaw Config 配置工具 ${CNB_BRANCH}
 
-              一键配置工具。
+              终端 TUI 一键配置工具，无需 GUI 环境，纯终端交互运行。
 
               ---
 
@@ -60,26 +74,26 @@ $:
 
               | 平台 | 架构 | 文件 |
               |------|------|------|
-              | Windows | x64 | `openclaw-config-windows` |
-              | macOS | Universal | `openclaw-config-macos` |
-              | Linux | x64 | `openclaw-config-linux` |
+              | Linux | x64 | `openclaw-config-linux-amd64` |
+              | Linux | ARM64 | `openclaw-config-linux-arm64` |
+              | Windows | x64 | `openclaw-config-windows-amd64.exe` |
+              | macOS | Intel | `openclaw-config-darwin-amd64` |
+              | macOS | Apple Silicon | `openclaw-config-darwin-arm64` |
 
               ---
 
               ### 🛠️ 使用说明
 
-              #### Windows
-              下载后直接双击运行 `openclaw-config-windows`
-
-              #### Linux
+              #### Linux / macOS
               ```bash
-              # 下载并添加执行权限后运行
-              chmod +x openclaw-config-linux
-              ./openclaw-config-linux
+              chmod +x openclaw-config-*
+              ./openclaw-config-linux-amd64
               ```
 
-              #### macOS
-              下载后双击运行，首次运行可能需要在「系统设置 > 隐私与安全性」中允许
+              #### Windows
+              ```
+              openclaw-config-windows-amd64.exe
+              ```
 
               ---
 
@@ -87,15 +101,15 @@ $:
 
               - [项目主页](https://cnb.cool/dmxapi/openclaw_config)
 
-        # 3. 上传附件到 Release
+        # 4. 上传附件到 Release
         - name: upload attachments
           image: cnbcool/attachments
           settings:
             attachments:
-              - "./openclaw-config-*"
+              - "./dist/openclaw-config-*"
             ttl: 0
 
-        # 4. 清理旧版本，只保留最近3个
+        # 5. 清理旧版本，只保留最近3个
         - name: cleanup old releases
           image: docker.cnb.cool/cnb/plugins/cnbcool/release-clean:latest
           settings:

@@ -1,36 +1,25 @@
 package main
 
 import (
-	"embed"
-
-	"github.com/wailsapp/wails/v2"
-	"github.com/wailsapp/wails/v2/pkg/options"
-	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
+	"flag"
+	"fmt"
+	"os"
 )
 
-//go:embed all:frontend/dist
-var assets embed.FS
+var Version = "dev"
 
 func main() {
-	// Create an instance of the app structure
+	showVersion := flag.Bool("version", false, "显示版本信息")
+	flag.Parse()
+
+	if *showVersion {
+		fmt.Printf("openclaw-config %s\n", Version)
+		os.Exit(0)
+	}
+
 	app := NewApp()
-
-	// Create application with options
-	err := wails.Run(&options.App{
-		Title:  "OpenClaw DMXAPI 配置工具",
-		Width:  700,
-		Height: 650,
-		AssetServer: &assetserver.Options{
-			Assets: assets,
-		},
-		BackgroundColour: &options.RGBA{R: 26, G: 26, B: 46, A: 1},
-		OnStartup:        app.startup,
-		Bind: []interface{}{
-			app,
-		},
-	})
-
-	if err != nil {
-		println("Error:", err.Error())
+	if err := app.Run(); err != nil {
+		fmt.Fprintf(os.Stderr, "错误: %v\n", err)
+		os.Exit(1)
 	}
 }
