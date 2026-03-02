@@ -57,7 +57,7 @@ func (a *App) Run() error {
 	selected := model
 	form := huh.NewForm(huh.NewGroup(
 		huh.NewInput().Title("Base URL").Placeholder("https://www.dmxapi.cn").Value(&baseUrl),
-		huh.NewInput().Title("API Key").Placeholder("sk-...").Password(true).Value(&apiKey),
+		huh.NewInput().Title("API Key").Placeholder("sk-...").Value(&apiKey),
 		huh.NewSelect[string]().Title("模型").Options(opts...).Value(&selected),
 	))
 	if err := form.Run(); err != nil {
@@ -105,16 +105,10 @@ func (a *App) Run() error {
 	}
 
 	// 成功提示
-	maskKey := func(k string) string {
-		if len(k) <= 8 {
-			return "****"
-		}
-		return k[:8] + "***"
-	}
 	fmt.Printf("\n✓ 配置已保存！\n")
 	fmt.Printf("  Base URL : %s\n", dmxConfig.BaseUrl)
 	fmt.Printf("  模型     : %s\n", dmxConfig.CurrentModel)
-	fmt.Printf("  API Key  : %s\n", maskKey(dmxConfig.ApiKey))
+	fmt.Printf("  API Key  : %s\n", dmxConfig.ApiKey)
 	fmt.Printf("\n执行以下命令使配置生效:\n  openclaw gateway restart\n\n")
 	return nil
 }
