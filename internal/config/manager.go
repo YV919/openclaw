@@ -267,6 +267,8 @@ func (cm *ConfigManager) UpdateDMXAPIConfig(dmxConfig *DMXAPIConfig) error {
 
 	// 更新 BaseUrl
 	dmxapi["baseUrl"] = dmxConfig.BaseUrl
+	// 同步写入 apiKey（Gemini / OpenAI 格式从此处读取密钥）
+	dmxapi["apiKey"] = dmxConfig.ApiKey
 
 	// 根据模型名称自动检测并更新 api 格式
 	dmxapi["api"] = DetectAPIFormat(dmxConfig.CurrentModel)
