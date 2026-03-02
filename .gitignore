@@ -1,3 +1,5 @@
 jihua/
 .claude/settings.local.json
 dist/
+openclaw-config
+openclaw_config
