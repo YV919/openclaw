@@ -40,8 +40,8 @@ $:
             - GOOS=linux   GOARCH=amd64 CGO_ENABLED=0 go build -ldflags "-s -w -X main.Version=${CNB_BRANCH}" -o dist/openclaw-config-linux-amd64 .
             - GOOS=linux   GOARCH=arm64 CGO_ENABLED=0 go build -ldflags "-s -w -X main.Version=${CNB_BRANCH}" -o dist/openclaw-config-linux-arm64 .
             - GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -ldflags "-s -w -X main.Version=${CNB_BRANCH}" -o dist/openclaw-config-windows-amd64.exe .
-            - GOOS=darwin  GOARCH=amd64 CGO_ENABLED=0 go build -ldflags "-s -w -X main.Version=${CNB_BRANCH}" -o dist/openclaw-config-darwin-amd64 .
-            - GOOS=darwin  GOARCH=arm64 CGO_ENABLED=0 go build -ldflags "-s -w -X main.Version=${CNB_BRANCH}" -o dist/openclaw-config-darwin-arm64 .
+            - GOOS=darwin  GOARCH=amd64 CGO_ENABLED=0 go build -ldflags "-s -w -X main.Version=${CNB_BRANCH}" -o dist/openclaw-config-macos-amd64 .
+            - GOOS=darwin  GOARCH=arm64 CGO_ENABLED=0 go build -ldflags "-s -w -X main.Version=${CNB_BRANCH}" -o dist/openclaw-config-macos-arm64 .
             - ls -lh dist/
 
         # 2. 生成更新日志
@@ -78,17 +78,33 @@ $:
               | Linux | x64 | `openclaw-config-linux-amd64` |
               | Linux | ARM64 | `openclaw-config-linux-arm64` |
               | Windows | x64 | `openclaw-config-windows-amd64.exe` |
-              | macOS | Intel | `openclaw-config-darwin-amd64` |
-              | macOS | Apple Silicon | `openclaw-config-darwin-arm64` |
+              | macOS | Intel | `openclaw-config-macos-amd64` |
+              | macOS | Apple Silicon | `openclaw-config-macos-arm64` |
 
               ---
 
               ### 🛠️ 使用说明
 
-              #### Linux / macOS
+              #### Linux
               ```bash
-              chmod +x openclaw-config-*
+              # x64
+              chmod +x openclaw-config-linux-amd64
               ./openclaw-config-linux-amd64
+
+              # ARM64
+              chmod +x openclaw-config-linux-arm64
+              ./openclaw-config-linux-arm64
+              ```
+
+              #### macOS
+              ```bash
+              # Intel
+              chmod +x openclaw-config-macos-amd64
+              ./openclaw-config-macos-amd64
+
+              # Apple Silicon
+              chmod +x openclaw-config-macos-arm64
+              ./openclaw-config-macos-arm64
               ```
 
               #### Windows

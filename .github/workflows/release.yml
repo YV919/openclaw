@@ -14,8 +14,8 @@ jobs:
           - { goos: linux,   goarch: amd64, suffix: linux-amd64 }
           - { goos: linux,   goarch: arm64, suffix: linux-arm64 }
           - { goos: windows, goarch: amd64, suffix: windows-amd64.exe }
-          - { goos: darwin,  goarch: amd64, suffix: darwin-amd64 }
-          - { goos: darwin,  goarch: arm64, suffix: darwin-arm64 }
+          - { goos: darwin,  goarch: amd64, suffix: macos-amd64 }
+          - { goos: darwin,  goarch: arm64, suffix: macos-arm64 }
 
     steps:
       - uses: actions/checkout@v4
@@ -88,15 +88,31 @@ jobs:
             | Linux | x64 | `openclaw-config-linux-amd64` |
             | Linux | ARM64 | `openclaw-config-linux-arm64` |
             | Windows | x64 | `openclaw-config-windows-amd64.exe` |
-            | macOS | Intel | `openclaw-config-darwin-amd64` |
-            | macOS | Apple Silicon | `openclaw-config-darwin-arm64` |
+            | macOS | Intel | `openclaw-config-macos-amd64` |
+            | macOS | Apple Silicon | `openclaw-config-macos-arm64` |
 
             ### 使用说明
 
-            #### Linux / macOS
+            #### Linux
             ```bash
-            chmod +x openclaw-config-*
+            # x64
+            chmod +x openclaw-config-linux-amd64
             ./openclaw-config-linux-amd64
+
+            # ARM64
+            chmod +x openclaw-config-linux-arm64
+            ./openclaw-config-linux-arm64
+            ```
+
+            #### macOS
+            ```bash
+            # Intel
+            chmod +x openclaw-config-macos-amd64
+            ./openclaw-config-macos-amd64
+
+            # Apple Silicon
+            chmod +x openclaw-config-macos-arm64
+            ./openclaw-config-macos-arm64
             ```
 
             #### Windows
