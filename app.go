@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/huh"
+	"github.com/charmbracelet/lipgloss"
 	"openclaw_config/internal/config"
 	"openclaw_config/internal/models"
 )
@@ -49,10 +50,7 @@ func (a *App) Run() error {
 	}
 	opts = append(opts, huh.NewOption("自定义模型...", "__custom__"))
 
-	fmt.Println("────────────────────────────────────────")
-	fmt.Println("  OpenClaw DMXAPI 配置工具")
-	fmt.Println("  注意：只能使用兼容 v1/messages 接口的模型")
-	fmt.Println("────────────────────────────────────────")
+	printBanner()
 
 	selected := model
 	form := huh.NewForm(huh.NewGroup(
@@ -111,4 +109,34 @@ func (a *App) Run() error {
 	fmt.Printf("  API Key  : %s\n", dmxConfig.ApiKey)
 	fmt.Printf("\n执行以下命令使配置生效:\n  openclaw gateway restart\n\n")
 	return nil
+}
+
+func printBanner() {
+	purple := lipgloss.Color("63")  // xterm-256 亮紫
+	gray := lipgloss.Color("240")   // 深灰
+
+	art := "  ██████╗ ███╗   ███╗██╗  ██╗ █████╗ ██████╗ ██╗\n" +
+		"  ██╔══██╗████╗ ████║╚██╗██╔╝██╔══██╗██╔══██╗██║\n" +
+		"  ██║  ██║██╔████╔██║ ╚███╔╝ ███████║██████╔╝██║\n" +
+		"  ██║  ██║██║╚██╔╝██║ ██╔██╗ ██╔══██║██╔═══╝ ██║\n" +
+		"  ██████╔╝██║ ╚═╝ ██║██╔╝ ██╗██║  ██║██║     ██║\n" +
+		"  ╚═════╝ ╚═╝     ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝╚═╝     ╚═╝"
+
+	logo := lipgloss.NewStyle().Foreground(purple).Render(art)
+
+	subtitle := lipgloss.NewStyle().Bold(true).
+		Render("  OpenClaw 配置工具  ·  openclaw-config " + Version)
+
+	sep := lipgloss.NewStyle().Foreground(gray).
+		Render("  ────────────────────────────────────────────────")
+
+	note := lipgloss.NewStyle().Foreground(gray).
+		Render("  注意：只能使用兼容 v1/messages 接口的模型")
+
+	fmt.Println(logo)
+	fmt.Println()
+	fmt.Println(subtitle)
+	fmt.Println(sep)
+	fmt.Println(note)
+	fmt.Println()
 }
