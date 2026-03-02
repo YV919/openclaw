@@ -124,8 +124,8 @@ func printSuccess(cfg *config.DMXAPIConfig) {
 
 	huh.NewForm(huh.NewGroup( //nolint:errcheck — Note 表单无实质错误
 		huh.NewNote().
-			Title("下一步").
-			Description("执行以下命令使配置生效:\n  `openclaw gateway restart`").
+			Title("提示").
+			Description("配置已立即生效，无需重启。").
 			Next(true).
 			NextLabel("按 Enter 退出"),
 	)).Run() //nolint:errcheck
