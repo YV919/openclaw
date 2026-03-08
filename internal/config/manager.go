@@ -187,14 +187,17 @@ func (cm *ConfigManager) UpdateModelsJson(baseUrl, apiFormat string) error {
 
 	data, err := os.ReadFile(modelsPath)
 	if err != nil {
-		// models.json 不存在时忽略（首次运行或 openclaw 尚未初始化）
-		// openclaw 启动时会从 openclaw.json 重新生成，届时会使用正确的 baseUrl
+		if !os.IsNotExist(err) {
+			// 文件存在但读取失败，输出警告避免静默失效
+			fmt.Fprintf(os.Stderr, "警告: 无法读取 models.json: %v\n", err)
+		}
 		return nil
 	}
 
 	var raw map[string]interface{}
 	if err := json.Unmarshal(data, &raw); err != nil {
-		return nil // 格式不对就跳过，不阻断主流程
+		fmt.Fprintf(os.Stderr, "警告: 无法解析 models.json: %v\n", err)
+		return nil
 	}
 
 	providers, ok := raw["providers"].(map[string]interface{})
@@ -213,9 +216,13 @@ func (cm *ConfigManager) UpdateModelsJson(baseUrl, apiFormat string) error {
 
 	updated, err := json.MarshalIndent(raw, "", "  ")
 	if err != nil {
+		fmt.Fprintf(os.Stderr, "警告: 无法序列化 models.json: %v\n", err)
 		return nil
 	}
-	return os.WriteFile(modelsPath, append(updated, '\n'), 0600)
+	if err := os.WriteFile(modelsPath, append(updated, '\n'), 0600); err != nil {
+		fmt.Fprintf(os.Stderr, "警告: 无法更新 models.json: %v\n", err)
+	}
+	return nil
 }
 
 // GetDMXAPIConfig 获取当前 DMXAPI 配置
@@ -278,6 +285,12 @@ func DetectAPIFormat(modelID string) string {
 	if strings.HasPrefix(lower, "gpt-5") {
 		return "openai-responses"
 	}
+	// o1/o3/o4 系列推理模型使用 Responses API
+	for _, prefix := range []string{"o1", "o3", "o4"} {
+		if lower == prefix || strings.HasPrefix(lower, prefix+"-") {
+			return "openai-responses"
+		}
+	}
 	return "openai-completions"
 }
 
@@ -289,20 +302,23 @@ func (cm *ConfigManager) UpdateDMXAPIConfig(dmxConfig *DMXAPIConfig) error {
 	}
 
 	// 确保 models 结构存在
-	if config["models"] == nil {
-		config["models"] = map[string]interface{}{}
+	models, ok := config["models"].(map[string]interface{})
+	if !ok {
+		models = map[string]interface{}{}
+		config["models"] = models
 	}
-	models := config["models"].(map[string]interface{})
 
-	if models["providers"] == nil {
-		models["providers"] = map[string]interface{}{}
+	providers, ok := models["providers"].(map[string]interface{})
+	if !ok {
+		providers = map[string]interface{}{}
+		models["providers"] = providers
 	}
-	providers := models["providers"].(map[string]interface{})
 
-	if providers[ProviderName] == nil {
-		providers[ProviderName] = map[string]interface{}{}
+	dmxapi, ok := providers[ProviderName].(map[string]interface{})
+	if !ok {
+		dmxapi = map[string]interface{}{}
+		providers[ProviderName] = dmxapi
 	}
-	dmxapi := providers[ProviderName].(map[string]interface{})
 
 	// 更新 BaseUrl
 	dmxapi["baseUrl"] = dmxConfig.BaseUrl
@@ -312,44 +328,18 @@ func (cm *ConfigManager) UpdateDMXAPIConfig(dmxConfig *DMXAPIConfig) error {
 	// 根据模型名称自动检测并更新 api 格式
 	dmxapi["api"] = DetectAPIFormat(dmxConfig.CurrentModel)
 
-	// 确保 models 数组存在并包含当前模型
+	// 每次覆写 models 数组，只保留当前模型（清除历史积累的旧条目）
 	modelId := dmxConfig.CurrentModel
-	modelExists := false
-	if modelsArr, ok := dmxapi["models"].([]interface{}); ok {
-		for _, m := range modelsArr {
-			if modelMap, ok := m.(map[string]interface{}); ok {
-				if modelMap["id"] == modelId {
-					modelExists = true
-					break
-				}
-			}
-		}
-		if !modelExists {
-			// 添加新模型
-			newModel := map[string]interface{}{
-				"id":            modelId,
-				"name":          modelId,
-				"reasoning":     false,
-				"input":         []string{"text"},
-				"cost":          map[string]interface{}{"input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0},
-				"contextWindow": 200000,
-				"maxTokens":     8192,
-			}
-			dmxapi["models"] = append(modelsArr, newModel)
-		}
-	} else {
-		// 创建 models 数组
-		dmxapi["models"] = []interface{}{
-			map[string]interface{}{
-				"id":            modelId,
-				"name":          modelId,
-				"reasoning":     false,
-				"input":         []string{"text"},
-				"cost":          map[string]interface{}{"input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0},
-				"contextWindow": 200000,
-				"maxTokens":     8192,
-			},
-		}
+	dmxapi["models"] = []interface{}{
+		map[string]interface{}{
+			"id":            modelId,
+			"name":          modelId,
+			"reasoning":     false,
+			"input":         []string{"text"},
+			"cost":          map[string]interface{}{"input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0},
+			"contextWindow": 200000,
+			"maxTokens":     8192,
+		},
 	}
 
 	// 确保 mode 字段存在
@@ -358,41 +348,45 @@ func (cm *ConfigManager) UpdateDMXAPIConfig(dmxConfig *DMXAPIConfig) error {
 	}
 
 	// 确保 agents 结构存在
-	if config["agents"] == nil {
-		config["agents"] = map[string]interface{}{}
+	agents, ok := config["agents"].(map[string]interface{})
+	if !ok {
+		agents = map[string]interface{}{}
+		config["agents"] = agents
 	}
-	agents := config["agents"].(map[string]interface{})
 
-	if agents["defaults"] == nil {
-		agents["defaults"] = map[string]interface{}{}
+	defaults, ok := agents["defaults"].(map[string]interface{})
+	if !ok {
+		defaults = map[string]interface{}{}
+		agents["defaults"] = defaults
 	}
-	defaults := agents["defaults"].(map[string]interface{})
 
-	// 更新 models 别名
-	if defaults["models"] == nil {
-		defaults["models"] = map[string]interface{}{}
-	}
-	modelsAlias := defaults["models"].(map[string]interface{})
+	// 重置 models 别名，只保留当前模型（清除旧别名积累）
 	fullModelId := ProviderName + "/" + modelId
-	modelsAlias[fullModelId] = map[string]interface{}{"alias": modelId}
+	modelsAlias := map[string]interface{}{
+		fullModelId: map[string]interface{}{"alias": modelId},
+	}
+	defaults["models"] = modelsAlias
 
 	// 更新 primary model
-	if defaults["model"] == nil {
-		defaults["model"] = map[string]interface{}{}
+	modelConfig, ok := defaults["model"].(map[string]interface{})
+	if !ok {
+		modelConfig = map[string]interface{}{}
+		defaults["model"] = modelConfig
 	}
-	modelConfig := defaults["model"].(map[string]interface{})
 	modelConfig["primary"] = fullModelId
 
 	// 确保 auth 结构存在
-	if config["auth"] == nil {
-		config["auth"] = map[string]interface{}{}
+	auth, ok := config["auth"].(map[string]interface{})
+	if !ok {
+		auth = map[string]interface{}{}
+		config["auth"] = auth
 	}
-	auth := config["auth"].(map[string]interface{})
 
-	if auth["profiles"] == nil {
-		auth["profiles"] = map[string]interface{}{}
+	authProfiles, ok := auth["profiles"].(map[string]interface{})
+	if !ok {
+		authProfiles = map[string]interface{}{}
+		auth["profiles"] = authProfiles
 	}
-	authProfiles := auth["profiles"].(map[string]interface{})
 
 	profileKey := ProviderName + ":default"
 	authProfiles[profileKey] = map[string]interface{}{

@@ -1,7 +1,11 @@
 package main
 
 import (
+	"errors"
 	"fmt"
+	"log"
+	"net/url"
+	"os"
 	"strings"
 
 	"github.com/charmbracelet/huh"
@@ -15,7 +19,10 @@ type App struct {
 }
 
 func NewApp() *App {
-	cm, _ := config.NewConfigManager()
+	cm, err := config.NewConfigManager()
+	if err != nil {
+		log.Printf("警告: 初始化配置管理器失败: %v", err)
+	}
 	return &App{configManager: cm}
 }
 
@@ -63,7 +70,11 @@ func (a *App) Run() error {
 		huh.NewSelect[string]().Title("模型").Options(opts...).Value(&selected),
 	))
 	if err := form.Run(); err != nil {
-		return fmt.Errorf("已取消")
+		if errors.Is(err, huh.ErrUserAborted) {
+			fmt.Fprintln(os.Stderr, "已取消")
+			os.Exit(0)
+		}
+		return fmt.Errorf("表单运行失败: %w", err)
 	}
 
 	// 若选了自定义：第二段表单收集模型名
@@ -74,7 +85,11 @@ func (a *App) Run() error {
 			huh.NewInput().Title("自定义模型名称").Value(&customModel),
 		))
 		if err := f2.Run(); err != nil {
-			return fmt.Errorf("已取消")
+			if errors.Is(err, huh.ErrUserAborted) {
+				fmt.Fprintln(os.Stderr, "已取消")
+				os.Exit(0)
+			}
+			return fmt.Errorf("表单运行失败: %w", err)
 		}
 		finalModel = strings.TrimSpace(customModel)
 		if finalModel == "" {
@@ -85,8 +100,14 @@ func (a *App) Run() error {
 	if strings.TrimSpace(apiKey) == "" {
 		return fmt.Errorf("API Key 不能为空")
 	}
-	if strings.TrimSpace(baseUrl) == "" {
+	trimmedUrl := strings.TrimSpace(baseUrl)
+	if trimmedUrl == "" {
 		baseUrl = config.DefaultBaseUrl
+	} else {
+		if _, err := url.ParseRequestURI(trimmedUrl); err != nil {
+			return fmt.Errorf("Base URL 格式无效: %w", err)
+		}
+		baseUrl = trimmedUrl
 	}
 
 	// 懒初始化 configManager（首次运行无配置文件时）
