@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 )
@@ -84,8 +85,9 @@ func (cm *ConfigManager) LoadAuthProfiles() (map[string]interface{}, error) {
 func (cm *ConfigManager) SaveConfig(config map[string]interface{}) error {
 	configPath := cm.GetConfigPath()
 
-	// 备份原配置
+	// 备份原配置（写入前先清理旧备份，保留最新 5 个）
 	if _, err := os.Stat(configPath); err == nil {
+		cm.cleanOldBackups(configPath, 5)
 		backupPath := configPath + ".backup." + time.Now().Format("20060102150405")
 		data, _ := os.ReadFile(configPath)
 		os.WriteFile(backupPath, data, 0600)
@@ -325,8 +327,9 @@ func (cm *ConfigManager) UpdateDMXAPIConfig(dmxConfig *DMXAPIConfig) error {
 	// 同步写入 apiKey（Gemini / OpenAI 格式从此处读取密钥）
 	dmxapi["apiKey"] = dmxConfig.ApiKey
 
-	// 根据模型名称自动检测并更新 api 格式
-	dmxapi["api"] = DetectAPIFormat(dmxConfig.CurrentModel)
+	// 根据模型名称自动检测并更新 api 格式（缓存结果，避免重复调用）
+	apiFormat := DetectAPIFormat(dmxConfig.CurrentModel)
+	dmxapi["api"] = apiFormat
 
 	// 每次覆写 models 数组，只保留当前模型（清除历史积累的旧条目）
 	modelId := dmxConfig.CurrentModel
@@ -400,7 +403,7 @@ func (cm *ConfigManager) UpdateDMXAPIConfig(dmxConfig *DMXAPIConfig) error {
 	}
 
 	// 同步 models.json 中的 baseUrl/api，绕过 openclaw 合并逻辑对旧值的保留
-	_ = cm.UpdateModelsJson(dmxConfig.BaseUrl, DetectAPIFormat(dmxConfig.CurrentModel))
+	_ = cm.UpdateModelsJson(dmxConfig.BaseUrl, apiFormat)
 
 	// 保存 API Key
 	if dmxConfig.ApiKey != "" {
@@ -410,4 +413,28 @@ func (cm *ConfigManager) UpdateDMXAPIConfig(dmxConfig *DMXAPIConfig) error {
 	}
 
 	return nil
+}
+
+// cleanOldBackups 在写入新备份前删除超出 maxKeep 限制的旧备份，确保总备份数不超过 maxKeep 个。
+// 备份文件名后缀为时间戳（20060102150405），字典序即时间顺序，最旧的排最前。
+func (cm *ConfigManager) cleanOldBackups(configPath string, maxKeep int) {
+	dir := filepath.Dir(configPath)
+	prefix := filepath.Base(configPath) + ".backup."
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return
+	}
+	var backups []string
+	for _, e := range entries {
+		if !e.IsDir() && strings.HasPrefix(e.Name(), prefix) {
+			backups = append(backups, filepath.Join(dir, e.Name()))
+		}
+	}
+	sort.Strings(backups) // 时间戳字典序即时间顺序，最旧的排最前
+	// 写入新备份后共 len(backups)+1 个，需删除多余的最旧备份
+	if len(backups) >= maxKeep {
+		for _, old := range backups[:len(backups)-maxKeep+1] {
+			os.Remove(old)
+		}
+	}
 }

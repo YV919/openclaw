@@ -80,7 +80,6 @@ func (a *App) Run() error {
 	// 若选了自定义：第二段表单收集模型名
 	finalModel := selected
 	if selected == "__custom__" {
-		customModel = ""  // 重置，避免旧模型名拼接
 		f2 := huh.NewForm(huh.NewGroup(
 			huh.NewInput().Title("自定义模型名称").Value(&customModel),
 		))
@@ -104,8 +103,9 @@ func (a *App) Run() error {
 	if trimmedUrl == "" {
 		baseUrl = config.DefaultBaseUrl
 	} else {
-		if _, err := url.ParseRequestURI(trimmedUrl); err != nil {
-			return fmt.Errorf("Base URL 格式无效: %w", err)
+		u, err := url.ParseRequestURI(trimmedUrl)
+		if err != nil || u.Scheme == "" {
+			return fmt.Errorf("Base URL 格式无效（需要包含 http:// 或 https://）")
 		}
 		baseUrl = trimmedUrl
 	}
