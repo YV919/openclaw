@@ -44,7 +44,7 @@ func (cm *ConfigManager) GetAuthProfilesPath() string {
 }
 
 // LoadConfig 读取主配置文件
-func (cm *ConfigManager) LoadConfig() (map[string]interface{}, error) {
+func (cm *ConfigManager) LoadConfig() (map[string]any, error) {
 	configPath := cm.GetConfigPath()
 	data, err := os.ReadFile(configPath)
 	if err != nil {
@@ -54,7 +54,7 @@ func (cm *ConfigManager) LoadConfig() (map[string]interface{}, error) {
 		return nil, fmt.Errorf("读取配置文件失败: %w", err)
 	}
 
-	var config map[string]interface{}
+	var config map[string]any
 	if err := json.Unmarshal(data, &config); err != nil {
 		return nil, fmt.Errorf("解析配置文件失败: %w", err)
 	}
@@ -63,7 +63,7 @@ func (cm *ConfigManager) LoadConfig() (map[string]interface{}, error) {
 }
 
 // LoadAuthProfiles 读取 auth-profiles.json
-func (cm *ConfigManager) LoadAuthProfiles() (map[string]interface{}, error) {
+func (cm *ConfigManager) LoadAuthProfiles() (map[string]any, error) {
 	authPath := cm.GetAuthProfilesPath()
 	data, err := os.ReadFile(authPath)
 	if err != nil {
@@ -73,7 +73,7 @@ func (cm *ConfigManager) LoadAuthProfiles() (map[string]interface{}, error) {
 		return nil, fmt.Errorf("读取 auth-profiles.json 失败: %w", err)
 	}
 
-	var authProfiles map[string]interface{}
+	var authProfiles map[string]any
 	if err := json.Unmarshal(data, &authProfiles); err != nil {
 		return nil, fmt.Errorf("解析 auth-profiles.json 失败: %w", err)
 	}
@@ -82,7 +82,7 @@ func (cm *ConfigManager) LoadAuthProfiles() (map[string]interface{}, error) {
 }
 
 // SaveConfig 保存主配置文件（带备份）
-func (cm *ConfigManager) SaveConfig(config map[string]interface{}) error {
+func (cm *ConfigManager) SaveConfig(config map[string]any) error {
 	configPath := cm.GetConfigPath()
 
 	// 备份原配置（写入前先清理旧备份，保留最新 5 个）
@@ -107,7 +107,7 @@ func (cm *ConfigManager) SaveConfig(config map[string]interface{}) error {
 }
 
 // SaveAuthProfiles 保存 auth-profiles.json
-func (cm *ConfigManager) SaveAuthProfiles(authProfiles map[string]interface{}) error {
+func (cm *ConfigManager) SaveAuthProfiles(authProfiles map[string]any) error {
 	authPath := cm.GetAuthProfilesPath()
 
 	// 确保目录存在
@@ -135,13 +135,13 @@ func (cm *ConfigManager) GetApiKey() (string, error) {
 		return "", err
 	}
 
-	profiles, ok := authProfiles["profiles"].(map[string]interface{})
+	profiles, ok := authProfiles["profiles"].(map[string]any)
 	if !ok {
 		return "", fmt.Errorf("profiles 字段格式错误")
 	}
 
 	profileKey := ProviderName + ":default"
-	dmxapiProfile, ok := profiles[profileKey].(map[string]interface{})
+	dmxapiProfile, ok := profiles[profileKey].(map[string]any)
 	if !ok {
 		return "", fmt.Errorf("未找到 %s 配置", profileKey)
 	}
@@ -159,20 +159,20 @@ func (cm *ConfigManager) SaveApiKey(key string) error {
 	authProfiles, err := cm.LoadAuthProfiles()
 	if err != nil {
 		// 如果文件不存在，创建新的
-		authProfiles = map[string]interface{}{
+		authProfiles = map[string]any{
 			"version":  1,
-			"profiles": map[string]interface{}{},
+			"profiles": map[string]any{},
 		}
 	}
 
-	profiles, ok := authProfiles["profiles"].(map[string]interface{})
+	profiles, ok := authProfiles["profiles"].(map[string]any)
 	if !ok {
-		profiles = map[string]interface{}{}
+		profiles = map[string]any{}
 		authProfiles["profiles"] = profiles
 	}
 
 	profileKey := ProviderName + ":default"
-	profiles[profileKey] = map[string]interface{}{
+	profiles[profileKey] = map[string]any{
 		"type":     "api_key",
 		"provider": ProviderName,
 		"key":      key,
@@ -196,17 +196,17 @@ func (cm *ConfigManager) UpdateModelsJson(baseUrl, apiFormat string) error {
 		return nil
 	}
 
-	var raw map[string]interface{}
+	var raw map[string]any
 	if err := json.Unmarshal(data, &raw); err != nil {
 		fmt.Fprintf(os.Stderr, "警告: 无法解析 models.json: %v\n", err)
 		return nil
 	}
 
-	providers, ok := raw["providers"].(map[string]interface{})
+	providers, ok := raw["providers"].(map[string]any)
 	if !ok {
 		return nil
 	}
-	dmxapi, ok := providers[ProviderName].(map[string]interface{})
+	dmxapi, ok := providers[ProviderName].(map[string]any)
 	if !ok {
 		return nil // dmxapi 尚未注册，跳过（openclaw 启动时会从 openclaw.json 创建）
 	}
@@ -239,9 +239,9 @@ func (cm *ConfigManager) GetDMXAPIConfig() (*DMXAPIConfig, error) {
 	}
 
 	// 获取 BaseUrl
-	if models, ok := config["models"].(map[string]interface{}); ok {
-		if providers, ok := models["providers"].(map[string]interface{}); ok {
-			if dmxapi, ok := providers[ProviderName].(map[string]interface{}); ok {
+	if models, ok := config["models"].(map[string]any); ok {
+		if providers, ok := models["providers"].(map[string]any); ok {
+			if dmxapi, ok := providers[ProviderName].(map[string]any); ok {
 				if baseUrl, ok := dmxapi["baseUrl"].(string); ok {
 					dmxConfig.BaseUrl = baseUrl
 				}
@@ -250,9 +250,9 @@ func (cm *ConfigManager) GetDMXAPIConfig() (*DMXAPIConfig, error) {
 	}
 
 	// 获取当前模型
-	if agents, ok := config["agents"].(map[string]interface{}); ok {
-		if defaults, ok := agents["defaults"].(map[string]interface{}); ok {
-			if model, ok := defaults["model"].(map[string]interface{}); ok {
+	if agents, ok := config["agents"].(map[string]any); ok {
+		if defaults, ok := agents["defaults"].(map[string]any); ok {
+			if model, ok := defaults["model"].(map[string]any); ok {
 				if primary, ok := model["primary"].(string); ok {
 					// 格式为 "dmxapi/模型ID"，需要去掉前缀
 					if len(primary) > len(ProviderName)+1 {
@@ -304,21 +304,21 @@ func (cm *ConfigManager) UpdateDMXAPIConfig(dmxConfig *DMXAPIConfig) error {
 	}
 
 	// 确保 models 结构存在
-	models, ok := config["models"].(map[string]interface{})
+	models, ok := config["models"].(map[string]any)
 	if !ok {
-		models = map[string]interface{}{}
+		models = map[string]any{}
 		config["models"] = models
 	}
 
-	providers, ok := models["providers"].(map[string]interface{})
+	providers, ok := models["providers"].(map[string]any)
 	if !ok {
-		providers = map[string]interface{}{}
+		providers = map[string]any{}
 		models["providers"] = providers
 	}
 
-	dmxapi, ok := providers[ProviderName].(map[string]interface{})
+	dmxapi, ok := providers[ProviderName].(map[string]any)
 	if !ok {
-		dmxapi = map[string]interface{}{}
+		dmxapi = map[string]any{}
 		providers[ProviderName] = dmxapi
 	}
 
@@ -333,13 +333,13 @@ func (cm *ConfigManager) UpdateDMXAPIConfig(dmxConfig *DMXAPIConfig) error {
 
 	// 每次覆写 models 数组，只保留当前模型（清除历史积累的旧条目）
 	modelId := dmxConfig.CurrentModel
-	dmxapi["models"] = []interface{}{
-		map[string]interface{}{
+	dmxapi["models"] = []any{
+		map[string]any{
 			"id":            modelId,
 			"name":          modelId,
 			"reasoning":     false,
 			"input":         []string{"text"},
-			"cost":          map[string]interface{}{"input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0},
+			"cost":          map[string]any{"input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0},
 			"contextWindow": 200000,
 			"maxTokens":     8192,
 		},
@@ -351,48 +351,48 @@ func (cm *ConfigManager) UpdateDMXAPIConfig(dmxConfig *DMXAPIConfig) error {
 	}
 
 	// 确保 agents 结构存在
-	agents, ok := config["agents"].(map[string]interface{})
+	agents, ok := config["agents"].(map[string]any)
 	if !ok {
-		agents = map[string]interface{}{}
+		agents = map[string]any{}
 		config["agents"] = agents
 	}
 
-	defaults, ok := agents["defaults"].(map[string]interface{})
+	defaults, ok := agents["defaults"].(map[string]any)
 	if !ok {
-		defaults = map[string]interface{}{}
+		defaults = map[string]any{}
 		agents["defaults"] = defaults
 	}
 
 	// 重置 models 别名，只保留当前模型（清除旧别名积累）
 	fullModelId := ProviderName + "/" + modelId
-	modelsAlias := map[string]interface{}{
-		fullModelId: map[string]interface{}{"alias": modelId},
+	modelsAlias := map[string]any{
+		fullModelId: map[string]any{"alias": modelId},
 	}
 	defaults["models"] = modelsAlias
 
 	// 更新 primary model
-	modelConfig, ok := defaults["model"].(map[string]interface{})
+	modelConfig, ok := defaults["model"].(map[string]any)
 	if !ok {
-		modelConfig = map[string]interface{}{}
+		modelConfig = map[string]any{}
 		defaults["model"] = modelConfig
 	}
 	modelConfig["primary"] = fullModelId
 
 	// 确保 auth 结构存在
-	auth, ok := config["auth"].(map[string]interface{})
+	auth, ok := config["auth"].(map[string]any)
 	if !ok {
-		auth = map[string]interface{}{}
+		auth = map[string]any{}
 		config["auth"] = auth
 	}
 
-	authProfiles, ok := auth["profiles"].(map[string]interface{})
+	authProfiles, ok := auth["profiles"].(map[string]any)
 	if !ok {
-		authProfiles = map[string]interface{}{}
+		authProfiles = map[string]any{}
 		auth["profiles"] = authProfiles
 	}
 
 	profileKey := ProviderName + ":default"
-	authProfiles[profileKey] = map[string]interface{}{
+	authProfiles[profileKey] = map[string]any{
 		"provider": ProviderName,
 		"mode":     "api_key",
 	}
@@ -413,6 +413,189 @@ func (cm *ConfigManager) UpdateDMXAPIConfig(dmxConfig *DMXAPIConfig) error {
 	}
 
 	return nil
+}
+
+// LoadFullConfig 读取并解析为工具视图，执行兼容性检测（不写文件）。
+// fixLogs: 每条描述一处自动修复，调用方负责展示。
+// 若 openclaw.json 不存在，返回空 FullConfig（非错误）。
+func (cm *ConfigManager) LoadFullConfig() (*FullConfig, []string, error) {
+	cfg := &FullConfig{}
+
+	// 先用 os.Stat 判断文件是否存在，避免依赖错误字符串匹配
+	if _, err := os.Stat(cm.GetConfigPath()); os.IsNotExist(err) {
+		return cfg, nil, nil
+	}
+
+	raw, err := cm.LoadConfig()
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// 提取 primary 用于 migration 推断
+	primary := extractPrimary(raw)
+
+	// 解析并迁移 providers
+	var rawProviders map[string]any
+	if models, ok := raw["models"].(map[string]any); ok {
+		rawProviders, _ = models["providers"].(map[string]any)
+	}
+	providers, logs := MigrateProviders(rawProviders, primary)
+
+	// 从 auth-profiles.json 补充 ApiKey（覆盖 openclaw.json 中的 apiKey）
+	authProfiles, err := cm.LoadAuthProfiles()
+	if err == nil {
+		if profiles, ok := authProfiles["profiles"].(map[string]any); ok {
+			for i, p := range providers {
+				profileKey := p.Name + ":default"
+				if prof, ok := profiles[profileKey].(map[string]any); ok {
+					if key, ok := prof["key"].(string); ok && key != "" {
+						providers[i].ApiKey = key
+					}
+				}
+			}
+		}
+	}
+
+	cfg.Providers = providers
+
+	// 主 agent 模型
+	cfg.MainAgent.Primary = primary
+	if fa := extractFallback(raw, "agents", "defaults", "model"); fa != "" {
+		cfg.MainAgent.Fallback = fa
+	}
+
+	// 子 agent 模型
+	if subPrimary := extractSubagentPrimary(raw); subPrimary != "" {
+		cfg.SubAgent.Primary = subPrimary
+		if subFallback := extractSubagentFallback(raw); subFallback != "" {
+			cfg.SubAgent.Fallback = subFallback
+		}
+	}
+
+	// 命名 agent
+	cfg.NamedAgents = extractNamedAgents(raw)
+
+	return cfg, logs, nil
+}
+
+func extractPrimary(raw map[string]any) string {
+	agents, ok := raw["agents"].(map[string]any)
+	if !ok {
+		return ""
+	}
+	defaults, ok := agents["defaults"].(map[string]any)
+	if !ok {
+		return ""
+	}
+	model := defaults["model"]
+	switch v := model.(type) {
+	case string:
+		return v
+	case map[string]any:
+		p, _ := v["primary"].(string)
+		return p
+	}
+	return ""
+}
+
+func extractFallback(raw map[string]any, keys ...string) string {
+	cur := any(raw)
+	for _, k := range keys {
+		m, ok := cur.(map[string]any)
+		if !ok {
+			return ""
+		}
+		cur = m[k]
+	}
+	switch v := cur.(type) {
+	case map[string]any:
+		if fallbacks, ok := v["fallbacks"].([]any); ok && len(fallbacks) > 0 {
+			s, _ := fallbacks[0].(string)
+			return s
+		}
+	}
+	return ""
+}
+
+func extractSubagentPrimary(raw map[string]any) string {
+	agents, ok := raw["agents"].(map[string]any)
+	if !ok {
+		return ""
+	}
+	defaults, ok := agents["defaults"].(map[string]any)
+	if !ok {
+		return ""
+	}
+	subagents, ok := defaults["subagents"].(map[string]any)
+	if !ok {
+		return ""
+	}
+	model := subagents["model"]
+	switch v := model.(type) {
+	case string:
+		return v
+	case map[string]any:
+		p, _ := v["primary"].(string)
+		return p
+	}
+	return ""
+}
+
+func extractSubagentFallback(raw map[string]any) string {
+	agents, ok := raw["agents"].(map[string]any)
+	if !ok {
+		return ""
+	}
+	defaults, ok := agents["defaults"].(map[string]any)
+	if !ok {
+		return ""
+	}
+	subagents, ok := defaults["subagents"].(map[string]any)
+	if !ok {
+		return ""
+	}
+	model, ok := subagents["model"].(map[string]any)
+	if !ok {
+		return ""
+	}
+	if fallbacks, ok := model["fallbacks"].([]any); ok && len(fallbacks) > 0 {
+		s, _ := fallbacks[0].(string)
+		return s
+	}
+	return ""
+}
+
+func extractNamedAgents(raw map[string]any) []NamedAgentConfig {
+	agents, ok := raw["agents"].(map[string]any)
+	if !ok {
+		return nil
+	}
+	list, ok := agents["list"].([]any)
+	if !ok {
+		return nil
+	}
+	var result []NamedAgentConfig
+	for _, item := range list {
+		m, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		id, _ := m["id"].(string)
+		if id == "" {
+			continue
+		}
+		na := NamedAgentConfig{ID: id}
+		if model, ok := m["model"].(map[string]any); ok {
+			na.Model.Primary, _ = model["primary"].(string)
+			if fallbacks, ok := model["fallbacks"].([]any); ok && len(fallbacks) > 0 {
+				na.Model.Fallback, _ = fallbacks[0].(string)
+			}
+		} else if modelStr, ok := m["model"].(string); ok {
+			na.Model.Primary = modelStr
+		}
+		result = append(result, na)
+	}
+	return result
 }
 
 // cleanOldBackups 在写入新备份前删除超出 maxKeep 限制的旧备份，确保总备份数不超过 maxKeep 个。
