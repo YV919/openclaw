@@ -647,16 +647,36 @@ func (cm *ConfigManager) SaveFullConfig(cfg *FullConfig) error {
 	}
 	defaults["subagents"] = subagents
 
-	// agents.list upsert（按 ID，保留其他条目）
-	if len(cfg.NamedAgents) > 0 {
+	// agents.list：先过滤删除，再 upsert（按 ID，保留无 model 字段的外部条目）
+	{
 		var existingList []any
 		if ag, ok := raw["agents"].(map[string]any); ok {
 			existingList, _ = ag["list"].([]any)
 		}
 
-		// 构建 ID → index 映射
-		indexByID := map[string]int{}
-		for i, item := range existingList {
+		// 构建本轮管理的 ID 集合
+		managedIDs := make(map[string]bool, len(cfg.NamedAgents))
+		for _, na := range cfg.NamedAgents {
+			managedIDs[na.ID] = true
+		}
+
+		// 过滤：保留无 model 字段（外部管理）或 ID 仍在管理列表中的条目
+		filtered := make([]any, 0, len(existingList))
+		for _, item := range existingList {
+			m, ok := item.(map[string]any)
+			if !ok {
+				continue
+			}
+			_, hasModel := m["model"]
+			id, _ := m["id"].(string)
+			if !hasModel || managedIDs[id] {
+				filtered = append(filtered, item)
+			}
+		}
+
+		// 构建 ID → index 映射（基于 filtered）
+		indexByID := make(map[string]int, len(filtered))
+		for i, item := range filtered {
 			if m, ok := item.(map[string]any); ok {
 				if id, ok := m["id"].(string); ok {
 					indexByID[id] = i
@@ -664,6 +684,7 @@ func (cm *ConfigManager) SaveFullConfig(cfg *FullConfig) error {
 			}
 		}
 
+		// upsert cfg.NamedAgents
 		for _, na := range cfg.NamedAgents {
 			var modelField any
 			if na.Model.Primary != "" {
@@ -675,8 +696,7 @@ func (cm *ConfigManager) SaveFullConfig(cfg *FullConfig) error {
 			}
 
 			if idx, exists := indexByID[na.ID]; exists {
-				// upsert: 只覆写 model 字段
-				entry, ok := existingList[idx].(map[string]any)
+				entry, ok := filtered[idx].(map[string]any)
 				if !ok {
 					continue
 				}
@@ -686,15 +706,14 @@ func (cm *ConfigManager) SaveFullConfig(cfg *FullConfig) error {
 					delete(entry, "model")
 				}
 			} else {
-				// 追加新条目
 				newEntry := map[string]any{"id": na.ID}
 				if modelField != nil {
 					newEntry["model"] = modelField
 				}
-				existingList = append(existingList, newEntry)
+				filtered = append(filtered, newEntry)
 			}
 		}
-		agents["list"] = existingList
+		agents["list"] = filtered
 	}
 
 	// 保存主配置

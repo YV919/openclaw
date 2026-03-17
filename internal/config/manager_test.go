@@ -308,3 +308,105 @@ func TestSaveFullConfig_NamedAgentUpsert(t *testing.T) {
 		t.Error("my-coder should be added")
 	}
 }
+
+func TestSaveFullConfig_DeletesRemovedNamedAgent(t *testing.T) {
+	cm, ocDir, _ := setupTestHome(t)
+
+	// 预写一个有两个 named agent 的配置
+	initial := map[string]any{
+		"agents": map[string]any{
+			"list": []any{
+				map[string]any{"id": "agent-a", "model": map[string]any{"primary": "p/m"}},
+				map[string]any{"id": "agent-b", "model": map[string]any{"primary": "p/m"}},
+				map[string]any{"id": "no-model-agent"}, // 无 model 字段，非本工具管理
+			},
+		},
+	}
+	writeJSON(t, filepath.Join(ocDir, ConfigFile), initial)
+	writeJSON(t, filepath.Join(ocDir, AuthProfilesDir, AuthProfilesFile), map[string]any{
+		"version":  1,
+		"profiles": map[string]any{},
+	})
+
+	// 只保留 agent-a，删除 agent-b
+	cfg := &FullConfig{
+		Providers: []ProviderConfig{
+			{Name: "dmxapi", BaseUrl: "https://api.dmxapi.cn/v1", ApiKey: "sk-x",
+				Models: []string{"claude-opus-4-6"}, ApiFormat: "anthropic-messages"},
+		},
+		MainAgent: AgentModelConfig{Primary: "dmxapi/claude-opus-4-6"},
+		NamedAgents: []NamedAgentConfig{
+			{ID: "agent-a", Model: AgentModelConfig{Primary: "p/m"}},
+		},
+	}
+	if err := cm.SaveFullConfig(cfg); err != nil {
+		t.Fatalf("SaveFullConfig failed: %v", err)
+	}
+
+	// 重新读取，验证 agent-b 已被删除，agent-a 和无 model 的条目保留
+	raw, err := cm.LoadConfig()
+	if err != nil {
+		t.Fatalf("LoadConfig failed: %v", err)
+	}
+	agents := raw["agents"].(map[string]any)
+	list := agents["list"].([]any)
+
+	ids := map[string]bool{}
+	for _, item := range list {
+		m := item.(map[string]any)
+		ids[m["id"].(string)] = true
+	}
+
+	if !ids["agent-a"] {
+		t.Error("expected agent-a to be preserved")
+	}
+	if ids["agent-b"] {
+		t.Error("expected agent-b to be deleted")
+	}
+	if !ids["no-model-agent"] {
+		t.Error("expected no-model-agent (external) to be preserved")
+	}
+}
+
+func TestSaveFullConfig_DeletesAllNamedAgents(t *testing.T) {
+	cm, ocDir, _ := setupTestHome(t)
+
+	initial := map[string]any{
+		"agents": map[string]any{
+			"list": []any{
+				map[string]any{"id": "agent-x", "model": map[string]any{"primary": "p/m"}},
+			},
+		},
+	}
+	writeJSON(t, filepath.Join(ocDir, ConfigFile), initial)
+	writeJSON(t, filepath.Join(ocDir, AuthProfilesDir, AuthProfilesFile), map[string]any{
+		"version":  1,
+		"profiles": map[string]any{},
+	})
+
+	// 删除所有命名 agent
+	cfg := &FullConfig{
+		Providers: []ProviderConfig{
+			{Name: "dmxapi", BaseUrl: "https://api.dmxapi.cn/v1", ApiKey: "sk-x",
+				Models: []string{"claude-opus-4-6"}, ApiFormat: "anthropic-messages"},
+		},
+		MainAgent:   AgentModelConfig{Primary: "dmxapi/claude-opus-4-6"},
+		NamedAgents: []NamedAgentConfig{},
+	}
+	if err := cm.SaveFullConfig(cfg); err != nil {
+		t.Fatalf("SaveFullConfig failed: %v", err)
+	}
+
+	raw, err := cm.LoadConfig()
+	if err != nil {
+		t.Fatalf("LoadConfig failed: %v", err)
+	}
+	agents := raw["agents"].(map[string]any)
+	list, _ := agents["list"].([]any)
+	for _, item := range list {
+		m := item.(map[string]any)
+		if _, hasModel := m["model"]; hasModel {
+			t.Errorf("expected no managed agents in list, found: %v", m["id"])
+		}
+	}
+}
