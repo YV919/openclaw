@@ -410,3 +410,42 @@ func TestSaveFullConfig_DeletesAllNamedAgents(t *testing.T) {
 		}
 	}
 }
+
+func TestSaveFullConfig_CleansOrphanedAuthProfiles(t *testing.T) {
+	cm, ocDir, _ := setupTestHome(t)
+
+	// 预写含两个 provider 的 auth-profiles
+	authPath := filepath.Join(ocDir, AuthProfilesDir, AuthProfilesFile)
+	initialAuth := map[string]any{
+		"version": 1,
+		"profiles": map[string]any{
+			"provider-a:default": map[string]any{"type": "api_key", "provider": "provider-a", "key": "sk-a"},
+			"provider-b:default": map[string]any{"type": "api_key", "provider": "provider-b", "key": "sk-b"},
+		},
+	}
+	writeJSON(t, authPath, initialAuth)
+
+	// 只保留 provider-a，删除 provider-b
+	cfg := &FullConfig{
+		Providers: []ProviderConfig{
+			{Name: "provider-a", BaseUrl: "https://a.example.com/v1", ApiKey: "sk-a", Models: []string{"m1"}, ApiFormat: "openai-completions"},
+		},
+	}
+	if err := cm.SaveFullConfig(cfg); err != nil {
+		t.Fatalf("SaveFullConfig failed: %v", err)
+	}
+
+	// 重新读取 auth-profiles
+	authData, err := cm.LoadAuthProfiles()
+	if err != nil {
+		t.Fatalf("LoadAuthProfiles failed: %v", err)
+	}
+	profiles := authData["profiles"].(map[string]any)
+
+	if _, ok := profiles["provider-b:default"]; ok {
+		t.Error("expected provider-b:default to be deleted from auth-profiles")
+	}
+	if _, ok := profiles["provider-a:default"]; !ok {
+		t.Error("expected provider-a:default to be preserved")
+	}
+}

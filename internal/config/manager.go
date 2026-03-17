@@ -732,7 +732,7 @@ func (cm *ConfigManager) SaveFullConfig(cfg *FullConfig) error {
 	return nil
 }
 
-// saveAllApiKeys 将所有 provider 的 ApiKey 写入 auth-profiles.json
+// saveAllApiKeys 将所有 provider 的 ApiKey 写入 auth-profiles.json，并清理已删除 provider 的孤立条目
 func (cm *ConfigManager) saveAllApiKeys(providers []ProviderConfig) error {
 	authProfiles, err := cm.LoadAuthProfiles()
 	if err != nil {
@@ -746,6 +746,25 @@ func (cm *ConfigManager) saveAllApiKeys(providers []ProviderConfig) error {
 		profiles = map[string]any{}
 		authProfiles["profiles"] = profiles
 	}
+
+	// 构建当前 provider 名称集合
+	currentNames := make(map[string]bool, len(providers))
+	for _, p := range providers {
+		currentNames[p.Name] = true
+	}
+
+	// 清理孤立条目：key 格式为 "{name}:default"，且 name 不在当前 providers 中
+	for key := range profiles {
+		if idx := strings.LastIndex(key, ":"); idx > 0 {
+			suffix := key[idx+1:]
+			name := key[:idx]
+			if suffix == "default" && !currentNames[name] {
+				delete(profiles, key)
+			}
+		}
+	}
+
+	// 写入当前 providers 的 API Key
 	for _, p := range providers {
 		profileKey := p.Name + ":default"
 		profiles[profileKey] = map[string]any{
