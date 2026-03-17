@@ -348,7 +348,7 @@ func editProvider(p config.ProviderConfig) (config.ProviderConfig, error) {
 			Value(&name),
 		huh.NewInput().
 			Title("Base URL").
-			Placeholder("https://api.example.com/v1").
+			Placeholder("https://www.dmxapi.cn/v1").
 			Validate(func(s string) error {
 				s = strings.TrimSpace(s)
 				if s == "" {
