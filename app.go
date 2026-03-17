@@ -111,6 +111,85 @@ func containsOptValue(opts []huh.Option[string], value string) bool {
 	return false
 }
 
+// checkProviderDeps 返回引用了指定 provider 模型的 Agent 描述列表
+func checkProviderDeps(providerName string, cfg *config.FullConfig) []string {
+	prefix := providerName + "/"
+	var deps []string
+	if strings.HasPrefix(cfg.MainAgent.Primary, prefix) {
+		deps = append(deps, "主 Agent (primary)")
+	}
+	if strings.HasPrefix(cfg.MainAgent.Fallback, prefix) {
+		deps = append(deps, "主 Agent (fallback)")
+	}
+	if strings.HasPrefix(cfg.SubAgent.Primary, prefix) {
+		deps = append(deps, "子 Agent (primary)")
+	}
+	if strings.HasPrefix(cfg.SubAgent.Fallback, prefix) {
+		deps = append(deps, "子 Agent (fallback)")
+	}
+	for _, na := range cfg.NamedAgents {
+		if strings.HasPrefix(na.Model.Primary, prefix) {
+			deps = append(deps, fmt.Sprintf("命名 Agent [%s] (primary)", na.ID))
+		}
+		if strings.HasPrefix(na.Model.Fallback, prefix) {
+			deps = append(deps, fmt.Sprintf("命名 Agent [%s] (fallback)", na.ID))
+		}
+	}
+	return deps
+}
+
+// deleteProvider 删除指定 provider，删除前检查依赖并警告，确认后清空相关 NamedAgent 的模型引用
+func deleteProvider(fullCfg *config.FullConfig, name string) error {
+	deps := checkProviderDeps(name, fullCfg)
+	if len(deps) > 0 {
+		yellow := lipgloss.NewStyle().Foreground(lipgloss.Color("220")).Bold(true)
+		dim := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
+		fmt.Println(yellow.Render(fmt.Sprintf("  ⚠ Provider %q 被以下配置引用：", name)))
+		for _, d := range deps {
+			fmt.Println(dim.Render("    · " + d))
+		}
+		fmt.Println()
+	}
+
+	var confirmed bool
+	form := huh.NewForm(huh.NewGroup(
+		huh.NewConfirm().
+			Title(fmt.Sprintf("确认删除 Provider %q？", name)).
+			Description("删除后相关 NamedAgent 的模型引用将被清空，主/子 Agent 的引用将在下一步重新选择。").
+			Value(&confirmed),
+	))
+	if err := form.Run(); err != nil {
+		if errors.Is(err, huh.ErrUserAborted) {
+			return nil
+		}
+		return err
+	}
+	if !confirmed {
+		return nil
+	}
+
+	// 从 Providers 中移除
+	newProviders := fullCfg.Providers[:0]
+	for _, p := range fullCfg.Providers {
+		if p.Name != name {
+			newProviders = append(newProviders, p)
+		}
+	}
+	fullCfg.Providers = newProviders
+
+	// 清空引用该 provider 的 NamedAgent 模型字段
+	prefix := name + "/"
+	for i := range fullCfg.NamedAgents {
+		if strings.HasPrefix(fullCfg.NamedAgents[i].Model.Primary, prefix) {
+			fullCfg.NamedAgents[i].Model.Primary = ""
+		}
+		if strings.HasPrefix(fullCfg.NamedAgents[i].Model.Fallback, prefix) {
+			fullCfg.NamedAgents[i].Model.Fallback = ""
+		}
+	}
+	return nil
+}
+
 // ── Step 1: Provider 管理 ──────────────────────────────────────────────────
 
 func (a *App) runStep1Providers(fullCfg *config.FullConfig) error {
