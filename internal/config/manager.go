@@ -495,6 +495,17 @@ func (cm *ConfigManager) LoadFullConfig() (*FullConfig, []string, error) {
 	cfg.SubAgent.Primary, cfg.SubAgent.Fallback = extractModelConfig(raw, "agents", "defaults", "subagents", "model")
 	cfg.NamedAgents = extractNamedAgents(raw)
 
+	// 合并磁盘来源：将磁盘中存在但 agents.list 没有的 agent ID 追加为空模型条目
+	existingIDs := make(map[string]bool, len(cfg.NamedAgents))
+	for _, na := range cfg.NamedAgents {
+		existingIDs[na.ID] = true
+	}
+	for _, id := range cm.ListAgentIDsFromDisk() {
+		if !existingIDs[id] {
+			cfg.NamedAgents = append(cfg.NamedAgents, NamedAgentConfig{ID: id})
+		}
+	}
+
 	return cfg, logs, nil
 }
 

@@ -494,6 +494,72 @@ func TestListAgentIDsFromDisk(t *testing.T) {
 	}
 }
 
+func TestLoadFullConfigMergesDiskAgents(t *testing.T) {
+	cm, ocDir, _ := setupTestHome(t)
+
+	// 建立磁盘目录：feishu 仅在磁盘，my-coder 在两处都有
+	for _, d := range []string{"feishu", "my-coder"} {
+		if err := os.MkdirAll(filepath.Join(cm.homeDir, OpenClawDir, "agents", d), 0700); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// 写最小 openclaw.json（my-coder 在 agents.list，feishu 不在）
+	writeJSON(t, filepath.Join(ocDir, ConfigFile), map[string]any{
+		"models": map[string]any{
+			"providers": map[string]any{
+				"dmxapi": map[string]any{
+					"baseUrl": "https://x.com/v1",
+					"apiKey":  "sk-x",
+					"api":     "openai-completions",
+					"models": []any{
+						map[string]any{
+							"id": "gpt-4o", "name": "gpt-4o",
+							"reasoning": false, "input": []string{"text"},
+							"cost":          map[string]any{"input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0},
+							"contextWindow": 200000, "maxTokens": 8192,
+						},
+					},
+				},
+			},
+		},
+		"agents": map[string]any{
+			"list": []any{
+				map[string]any{"id": "my-coder", "model": map[string]any{"primary": "dmxapi/gpt-4o"}},
+			},
+		},
+	})
+
+	cfg, _, err := cm.LoadFullConfig()
+	if err != nil {
+		t.Fatalf("LoadFullConfig 失败: %v", err)
+	}
+
+	idMap := map[string]bool{}
+	for _, na := range cfg.NamedAgents {
+		idMap[na.ID] = true
+	}
+
+	// feishu 来自磁盘，应被合并
+	if !idMap["feishu"] {
+		t.Error("feishu 应从磁盘发现并合并，但不在 NamedAgents 中")
+	}
+	// my-coder 不应重复
+	count := 0
+	for _, na := range cfg.NamedAgents {
+		if na.ID == "my-coder" {
+			count++
+		}
+	}
+	if count != 1 {
+		t.Errorf("my-coder 应恰好出现一次，实际出现 %d 次", count)
+	}
+	// main 不应出现
+	if idMap["main"] {
+		t.Error("main 不应出现在 NamedAgents 中")
+	}
+}
+
 func TestExtractNamedAgentsFiltersMain(t *testing.T) {
 	raw := map[string]any{
 		"agents": map[string]any{
