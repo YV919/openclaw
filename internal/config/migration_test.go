@@ -4,6 +4,49 @@ import (
 	"testing"
 )
 
+func TestNormalizeBaseURL(t *testing.T) {
+	tests := []struct {
+		rawURL    string
+		apiFormat string
+		want      string
+	}{
+		// openai-completions：无路径 → 追加 /v1
+		{"https://api.example.com", "openai-completions", "https://api.example.com/v1"},
+		// 末尾斜杠 → 追加 /v1
+		{"https://api.example.com/", "openai-completions", "https://api.example.com/v1"},
+		// 已有 /v1 → 不重复
+		{"https://api.example.com/v1", "openai-completions", "https://api.example.com/v1"},
+		// /v1/ → 去末尾斜杠
+		{"https://api.example.com/v1/", "openai-completions", "https://api.example.com/v1"},
+		// 大写 scheme/host/path → 全部规范化
+		{"HTTPS://API.EXAMPLE.COM/V1", "openai-completions", "https://api.example.com/v1"},
+		// 自定义路径 → 保留
+		{"https://api.example.com/my-path", "openai-completions", "https://api.example.com/my-path"},
+		// openai-responses
+		{"https://api.example.com", "openai-responses", "https://api.example.com/v1"},
+		{"https://api.example.com/v1", "openai-responses", "https://api.example.com/v1"},
+		// anthropic-messages
+		{"https://api.example.com", "anthropic-messages", "https://api.example.com/v1"},
+		{"https://api.example.com/v1", "anthropic-messages", "https://api.example.com/v1"},
+		{"https://api.example.com/my-path", "anthropic-messages", "https://api.example.com/my-path"},
+		// google-generative-ai：不追加 /v1
+		{"https://generativelanguage.googleapis.com", "google-generative-ai", "https://generativelanguage.googleapis.com"},
+		// google 末尾斜杠 → 去掉
+		{"https://generativelanguage.googleapis.com/", "google-generative-ai", "https://generativelanguage.googleapis.com"},
+		// google 代理 URL → 保留原样
+		{"https://my-gemini-proxy.example.com", "google-generative-ai", "https://my-gemini-proxy.example.com"},
+		// 空字符串 → 原样
+		{"", "openai-completions", ""},
+		{"  ", "openai-completions", ""},
+	}
+	for _, tc := range tests {
+		got := NormalizeBaseURL(tc.rawURL, tc.apiFormat)
+		if got != tc.want {
+			t.Errorf("NormalizeBaseURL(%q, %q)\n  got  %q\n  want %q", tc.rawURL, tc.apiFormat, got, tc.want)
+		}
+	}
+}
+
 func TestNormalizeSlug(t *testing.T) {
 	tests := []struct {
 		input string
@@ -159,6 +202,29 @@ func TestMigrateProviders_PrimaryMatchesOriginalKey(t *testing.T) {
 	}
 	if len(logs) == 0 {
 		t.Error("expected migration log for model inference")
+	}
+}
+
+func TestMigrateProviders_GoogleFormatNoV1(t *testing.T) {
+	raw := map[string]any{
+		"gemini": map[string]any{
+			"baseUrl": "https://generativelanguage.googleapis.com",
+			"apiKey":  "AIza-test",
+			"api":     "google-generative-ai",
+			"models": []any{
+				map[string]any{"id": "gemini-2.0-flash"},
+			},
+		},
+	}
+	providers, logs := MigrateProviders(raw, "")
+	if len(providers) != 1 {
+		t.Fatalf("expected 1 provider, got %d", len(providers))
+	}
+	if providers[0].BaseUrl != "https://generativelanguage.googleapis.com" {
+		t.Errorf("expected google URL unchanged, got %q", providers[0].BaseUrl)
+	}
+	if len(logs) != 0 {
+		t.Errorf("expected no migration logs for google format, got %v", logs)
 	}
 }
 

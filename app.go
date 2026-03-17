@@ -317,8 +317,11 @@ var apiFormatOpts = []huh.Option[string]{
 
 func editProvider(p config.ProviderConfig) (config.ProviderConfig, error) {
 	name := p.Name
-	// 展示时去掉 /v1 后缀，保存时再自动补回
-	baseUrl := strings.TrimSuffix(strings.TrimRight(p.BaseUrl, "/"), "/v1")
+	// 格式感知的展示剥离：仅对自动补全 /v1 的格式剥除，google-generative-ai 原样
+	baseUrl := p.BaseUrl
+	if p.ApiFormat != "google-generative-ai" {
+		baseUrl = strings.TrimSuffix(strings.TrimRight(p.BaseUrl, "/"), "/v1")
+	}
 	apiKey := p.ApiKey
 	apiFormat := p.ApiFormat
 	if apiFormat == "" {
@@ -425,11 +428,8 @@ func editProvider(p config.ProviderConfig) (config.ProviderConfig, error) {
 		return config.ProviderConfig{}, err
 	}
 
-	// 自动补全 /v1 后缀
-	baseUrl = strings.TrimRight(strings.TrimSpace(baseUrl), "/")
-	if !strings.HasSuffix(baseUrl, "/v1") {
-		baseUrl = baseUrl + "/v1"
-	}
+	// 格式感知规范化（追加 /v1 或保留自定义路径，google-generative-ai 不追加）
+	baseUrl = config.NormalizeBaseURL(strings.TrimSpace(baseUrl), apiFormat)
 
 	// 整理模型列表
 	finalModels := []string{}

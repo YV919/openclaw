@@ -3,6 +3,7 @@ package config
 import (
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"sort"
@@ -270,6 +271,39 @@ func (cm *ConfigManager) GetDMXAPIConfig() (*DMXAPIConfig, error) {
 	}
 
 	return dmxConfig, nil
+}
+
+// NormalizeBaseURL 对 rawURL 执行格式感知的规范化，集中处理各 API 格式的 /v1 逻辑。
+//   - openai-completions / openai-responses / anthropic-messages：
+//     path 为空时追加 /v1；path 已是 /v1（不区分大小写）时规范化为小写 /v1；自定义路径保留。
+//   - google-generative-ai 及其他：只清理空格和末尾斜杠，不追加 /v1。
+//
+// 同时将 scheme 和 host 小写化（URL 规范，DNS 大小写无关）。
+func NormalizeBaseURL(rawURL, apiFormat string) string {
+	s := strings.TrimRight(strings.TrimSpace(rawURL), "/")
+	if s == "" {
+		return ""
+	}
+	u, err := url.Parse(s)
+	if err != nil {
+		return s
+	}
+	u.Scheme = strings.ToLower(u.Scheme)
+	u.Host = strings.ToLower(u.Host)
+	path := strings.TrimRight(u.Path, "/")
+	switch apiFormat {
+	case "openai-completions", "openai-responses", "anthropic-messages":
+		if path == "" {
+			u.Path = "/v1"
+		} else if strings.ToLower(path) == "/v1" {
+			u.Path = "/v1"
+		} else {
+			u.Path = path
+		}
+	default:
+		u.Path = path
+	}
+	return u.String()
 }
 
 // DetectAPIFormat 根据模型 ID 自动检测应使用的 API 格式

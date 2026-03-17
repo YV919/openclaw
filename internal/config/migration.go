@@ -80,12 +80,6 @@ func MigrateProviders(
 		apiKey, _ := pMap["apiKey"].(string)
 		apiFormat, _ := pMap["api"].(string)
 
-		// 修复 2：旧默认 URL（无 /v1）
-		if baseUrl == "https://www.dmxapi.cn" {
-			baseUrl = "https://www.dmxapi.cn/v1"
-			logs = append(logs, fmt.Sprintf("provider %q 的 baseUrl 已补全 /v1 路径", name))
-		}
-
 		// 解析已有模型列表
 		var modelIDs []string
 		if rawModels, ok := pMap["models"].([]any); ok {
@@ -120,6 +114,12 @@ func MigrateProviders(
 		}
 		if apiFormat == "" {
 			apiFormat = "openai-completions"
+		}
+
+		// 修复 2：格式感知的 baseUrl 规范化（追加/规范化 /v1，或保留自定义路径）
+		if normalizedURL := NormalizeBaseURL(baseUrl, apiFormat); normalizedURL != baseUrl && normalizedURL != "" {
+			logs = append(logs, fmt.Sprintf("provider %q 的 baseUrl 已规范化: %q → %q", name, baseUrl, normalizedURL))
+			baseUrl = normalizedURL
 		}
 
 		providers = append(providers, ProviderConfig{
