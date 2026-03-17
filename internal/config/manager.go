@@ -432,7 +432,7 @@ func (cm *ConfigManager) LoadFullConfig() (*FullConfig, []string, error) {
 	}
 
 	// 提取 primary 用于 migration 推断
-	primary := extractPrimary(raw)
+	primary, _ := extractModelConfig(raw, "agents", "defaults", "model")
 
 	// 解析并迁移 providers
 	var rawProviders map[string]any
@@ -457,112 +457,35 @@ func (cm *ConfigManager) LoadFullConfig() (*FullConfig, []string, error) {
 	}
 
 	cfg.Providers = providers
-
-	// 主 agent 模型
-	cfg.MainAgent.Primary = primary
-	if fa := extractFallback(raw, "agents", "defaults", "model"); fa != "" {
-		cfg.MainAgent.Fallback = fa
-	}
-
-	// 子 agent 模型
-	if subPrimary := extractSubagentPrimary(raw); subPrimary != "" {
-		cfg.SubAgent.Primary = subPrimary
-		if subFallback := extractSubagentFallback(raw); subFallback != "" {
-			cfg.SubAgent.Fallback = subFallback
-		}
-	}
-
-	// 命名 agent
+	cfg.MainAgent.Primary, cfg.MainAgent.Fallback = extractModelConfig(raw, "agents", "defaults", "model")
+	cfg.SubAgent.Primary, cfg.SubAgent.Fallback = extractModelConfig(raw, "agents", "defaults", "subagents", "model")
 	cfg.NamedAgents = extractNamedAgents(raw)
 
 	return cfg, logs, nil
 }
 
-func extractPrimary(raw map[string]any) string {
-	agents, ok := raw["agents"].(map[string]any)
-	if !ok {
-		return ""
-	}
-	defaults, ok := agents["defaults"].(map[string]any)
-	if !ok {
-		return ""
-	}
-	model := defaults["model"]
-	switch v := model.(type) {
-	case string:
-		return v
-	case map[string]any:
-		p, _ := v["primary"].(string)
-		return p
-	}
-	return ""
-}
-
-func extractFallback(raw map[string]any, keys ...string) string {
+// extractModelConfig 沿 keys 路径导航 raw，解析终端 model 节点（支持 string 和 {primary,fallbacks} 两种格式）。
+// 返回 (primary, fallback)，路径不存在或类型不匹配时返回空字符串。
+func extractModelConfig(raw map[string]any, keys ...string) (primary, fallback string) {
 	cur := any(raw)
 	for _, k := range keys {
 		m, ok := cur.(map[string]any)
 		if !ok {
-			return ""
+			return "", ""
 		}
 		cur = m[k]
 	}
 	switch v := cur.(type) {
-	case map[string]any:
-		if fallbacks, ok := v["fallbacks"].([]any); ok && len(fallbacks) > 0 {
-			s, _ := fallbacks[0].(string)
-			return s
-		}
-	}
-	return ""
-}
-
-func extractSubagentPrimary(raw map[string]any) string {
-	agents, ok := raw["agents"].(map[string]any)
-	if !ok {
-		return ""
-	}
-	defaults, ok := agents["defaults"].(map[string]any)
-	if !ok {
-		return ""
-	}
-	subagents, ok := defaults["subagents"].(map[string]any)
-	if !ok {
-		return ""
-	}
-	model := subagents["model"]
-	switch v := model.(type) {
 	case string:
-		return v
+		return v, ""
 	case map[string]any:
-		p, _ := v["primary"].(string)
-		return p
+		primary, _ = v["primary"].(string)
+		if fbs, ok := v["fallbacks"].([]any); ok && len(fbs) > 0 {
+			fallback, _ = fbs[0].(string)
+		}
+		return primary, fallback
 	}
-	return ""
-}
-
-func extractSubagentFallback(raw map[string]any) string {
-	agents, ok := raw["agents"].(map[string]any)
-	if !ok {
-		return ""
-	}
-	defaults, ok := agents["defaults"].(map[string]any)
-	if !ok {
-		return ""
-	}
-	subagents, ok := defaults["subagents"].(map[string]any)
-	if !ok {
-		return ""
-	}
-	model, ok := subagents["model"].(map[string]any)
-	if !ok {
-		return ""
-	}
-	if fallbacks, ok := model["fallbacks"].([]any); ok && len(fallbacks) > 0 {
-		s, _ := fallbacks[0].(string)
-		return s
-	}
-	return ""
+	return "", ""
 }
 
 func extractNamedAgents(raw map[string]any) []NamedAgentConfig {
@@ -585,14 +508,7 @@ func extractNamedAgents(raw map[string]any) []NamedAgentConfig {
 			continue
 		}
 		na := NamedAgentConfig{ID: id}
-		if model, ok := m["model"].(map[string]any); ok {
-			na.Model.Primary, _ = model["primary"].(string)
-			if fallbacks, ok := model["fallbacks"].([]any); ok && len(fallbacks) > 0 {
-				na.Model.Fallback, _ = fallbacks[0].(string)
-			}
-		} else if modelStr, ok := m["model"].(string); ok {
-			na.Model.Primary = modelStr
-		}
+		na.Model.Primary, na.Model.Fallback = extractModelConfig(m, "model")
 		result = append(result, na)
 	}
 	return result
