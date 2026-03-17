@@ -835,3 +835,29 @@ func printBanner() {
 	fmt.Println(note)
 	fmt.Println()
 }
+
+// detectFormatFromModels 根据模型列表自动推断 API 格式。
+// 若所有模型格式一致（含单模型情形），直接返回该格式。
+// 若存在冲突，打印黄色警告并返回第一个模型的格式。
+// 调用方保证 models 非空。
+func detectFormatFromModels(models []string) string {
+	seen := make(map[string]bool, len(models))
+	for _, m := range models {
+		seen[config.DetectAPIFormat(m)] = true
+	}
+	if len(seen) == 1 {
+		for f := range seen {
+			return f
+		}
+	}
+	// 存在冲突：打印警告，返回第一个模型的格式
+	yellow := lipgloss.NewStyle().Foreground(lipgloss.Color("220")).Bold(true)
+	dim := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
+	fmt.Println(yellow.Render("  ⚠ 所选模型包含不同 API 格式，将使用第一个模型的格式："))
+	for _, m := range models {
+		fmt.Println(dim.Render(fmt.Sprintf("    · %s → %s", m, config.DetectAPIFormat(m))))
+	}
+	fmt.Println(dim.Render("  建议：将不同格式的模型拆分为独立 provider"))
+	fmt.Println()
+	return config.DetectAPIFormat(models[0])
+}
