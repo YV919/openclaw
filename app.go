@@ -308,13 +308,6 @@ func chineseKeyMap() *huh.KeyMap {
 	return km
 }
 
-var apiFormatOpts = []huh.Option[string]{
-	huh.NewOption("openai-completions  (GPT / 通用兼容)", "openai-completions"),
-	huh.NewOption("anthropic-messages  (Claude)", "anthropic-messages"),
-	huh.NewOption("openai-responses    (GPT-5 / o 系列)", "openai-responses"),
-	huh.NewOption("google-generative-ai (Gemini)", "google-generative-ai"),
-}
-
 func editProvider(p config.ProviderConfig) (config.ProviderConfig, error) {
 	name := p.Name
 	// 格式感知的展示剥离：仅对自动补全 /v1 的格式剥除，google-generative-ai 原样
@@ -323,10 +316,6 @@ func editProvider(p config.ProviderConfig) (config.ProviderConfig, error) {
 		baseUrl = strings.TrimSuffix(strings.TrimRight(p.BaseUrl, "/"), "/v1")
 	}
 	apiKey := p.ApiKey
-	apiFormat := p.ApiFormat
-	if apiFormat == "" {
-		apiFormat = "openai-completions"
-	}
 
 	// 构建预设模型集合，用于快速判断自定义模型
 	presetSet := make(map[string]bool, len(models.PresetModels))
@@ -413,11 +402,6 @@ func editProvider(p config.ProviderConfig) (config.ProviderConfig, error) {
 			Title("自定义模型名称（可选，留空跳过）").
 			Placeholder("my-custom-model").
 			Value(&customModel),
-		huh.NewSelect[string]().
-			Title("API 格式").
-			Description("不确定时选 openai-completions。若同一 provider 含不同格式模型，请分拆为多个 provider").
-			Options(apiFormatOpts...).
-			Value(&apiFormat),
 	)).WithKeyMap(chineseKeyMap())
 
 	if err := form.Run(); err != nil {
@@ -427,9 +411,6 @@ func editProvider(p config.ProviderConfig) (config.ProviderConfig, error) {
 		}
 		return config.ProviderConfig{}, err
 	}
-
-	// 格式感知规范化（追加 /v1 或保留自定义路径，google-generative-ai 不追加）
-	baseUrl = config.NormalizeBaseURL(strings.TrimSpace(baseUrl), apiFormat)
 
 	// 整理模型列表
 	finalModels := []string{}
@@ -446,10 +427,9 @@ func editProvider(p config.ProviderConfig) (config.ProviderConfig, error) {
 		return config.ProviderConfig{}, fmt.Errorf("provider %q 的模型列表不能为空", name)
 	}
 
-	// 若 apiFormat 为空，根据第一个模型自动推断
-	if apiFormat == "" {
-		apiFormat = config.DetectAPIFormat(finalModels[0])
-	}
+	// 先确定 apiFormat，再规范化 URL（NormalizeBaseURL 依赖 apiFormat）
+	apiFormat := detectFormatFromModels(finalModels)
+	baseUrl = config.NormalizeBaseURL(strings.TrimSpace(baseUrl), apiFormat)
 
 	return config.ProviderConfig{
 		Name:      strings.TrimSpace(name),
