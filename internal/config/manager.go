@@ -538,7 +538,7 @@ func extractNamedAgents(raw map[string]any) []NamedAgentConfig {
 			continue
 		}
 		id, _ := m["id"].(string)
-		if id == "" {
+		if id == "" || id == "main" {
 			continue
 		}
 		na := NamedAgentConfig{ID: id}
@@ -546,6 +546,28 @@ func extractNamedAgents(raw map[string]any) []NamedAgentConfig {
 		result = append(result, na)
 	}
 	return result
+}
+
+// ListAgentIDsFromDisk 扫描 ~/.openclaw/agents/ 目录，返回所有子目录名。
+// 排除 "main"（默认 agent，由 Step 2/3 管理）。
+// 目录不存在时静默返回空切片。
+func (cm *ConfigManager) ListAgentIDsFromDisk() []string {
+	agentsDir := filepath.Join(cm.homeDir, OpenClawDir, "agents")
+	entries, err := os.ReadDir(agentsDir)
+	if err != nil {
+		return nil
+	}
+	var ids []string
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		if e.Name() == "main" {
+			continue
+		}
+		ids = append(ids, e.Name())
+	}
+	return ids
 }
 
 // cleanOldBackups 在写入新备份前删除超出 maxKeep 限制的旧备份，确保总备份数不超过 maxKeep 个。

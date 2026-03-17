@@ -449,3 +449,67 @@ func TestSaveFullConfig_CleansOrphanedAuthProfiles(t *testing.T) {
 		t.Error("expected provider-a:default to be preserved")
 	}
 }
+
+func TestListAgentIDsFromDisk(t *testing.T) {
+	// 目录不存在时应返回空切片
+	cm := &ConfigManager{homeDir: t.TempDir()}
+	got := cm.ListAgentIDsFromDisk()
+	if len(got) != 0 {
+		t.Errorf("期望空切片，得到 %v", got)
+	}
+
+	// 建立目录结构
+	base := filepath.Join(cm.homeDir, OpenClawDir, "agents")
+	for _, d := range []string{"main", "feishu", "my-coder"} {
+		if err := os.MkdirAll(filepath.Join(base, d), 0700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// 建一个普通文件（不是目录），应被忽略
+	if err := os.WriteFile(filepath.Join(base, "not-a-dir.txt"), []byte("x"), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	got = cm.ListAgentIDsFromDisk()
+
+	// main 应被过滤
+	for _, id := range got {
+		if id == "main" {
+			t.Errorf("main 应被过滤，但出现在结果中")
+		}
+	}
+	// feishu 和 my-coder 应存在
+	gotMap := map[string]bool{}
+	for _, id := range got {
+		gotMap[id] = true
+	}
+	for _, want := range []string{"feishu", "my-coder"} {
+		if !gotMap[want] {
+			t.Errorf("期望 %q 在结果中，但未找到", want)
+		}
+	}
+	// 普通文件不应出现
+	if gotMap["not-a-dir.txt"] {
+		t.Error("文件 not-a-dir.txt 不应出现在结果中")
+	}
+}
+
+func TestExtractNamedAgentsFiltersMain(t *testing.T) {
+	raw := map[string]any{
+		"agents": map[string]any{
+			"list": []any{
+				map[string]any{"id": "main"},
+				map[string]any{"id": "feishu"},
+			},
+		},
+	}
+	result := extractNamedAgents(raw)
+	for _, na := range result {
+		if na.ID == "main" {
+			t.Error("main 不应出现在命名 Agent 列表中")
+		}
+	}
+	if len(result) != 1 || result[0].ID != "feishu" {
+		t.Errorf("期望只有 feishu，得到 %v", result)
+	}
+}
