@@ -35,14 +35,14 @@ func SlugFromURL(baseUrl string) string {
 // 返回修复后的 []ProviderConfig 和每次修复的描述日志。
 // primary 参数是 agents.defaults.model.primary 的值，用于 Models 为空时反推模型 ID。
 func MigrateProviders(
-	rawProviders map[string]interface{},
+	rawProviders map[string]any,
 	primary string,
 ) ([]ProviderConfig, []string) {
 	var providers []ProviderConfig
 	var logs []string
 
 	for key, val := range rawProviders {
-		pMap, ok := val.(map[string]interface{})
+		pMap, ok := val.(map[string]any)
 		if !ok {
 			continue
 		}
@@ -76,9 +76,9 @@ func MigrateProviders(
 
 		// 解析已有模型列表
 		var modelIDs []string
-		if rawModels, ok := pMap["models"].([]interface{}); ok {
+		if rawModels, ok := pMap["models"].([]any); ok {
 			for _, m := range rawModels {
-				if mMap, ok := m.(map[string]interface{}); ok {
+				if mMap, ok := m.(map[string]any); ok {
 					if id, ok := mMap["id"].(string); ok && id != "" {
 						modelIDs = append(modelIDs, id)
 					}

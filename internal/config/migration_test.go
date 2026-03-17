@@ -44,13 +44,13 @@ func TestSlugFromURL(t *testing.T) {
 }
 
 func TestMigrateProviders_NormalizesKey(t *testing.T) {
-	raw := map[string]interface{}{
-		"My Provider": map[string]interface{}{
+	raw := map[string]any{
+		"My Provider": map[string]any{
 			"baseUrl": "https://api.example.com/v1",
 			"apiKey":  "sk-test",
 			"api":     "openai-completions",
-			"models": []interface{}{
-				map[string]interface{}{"id": "gpt-4o"},
+			"models": []any{
+				map[string]any{"id": "gpt-4o"},
 			},
 		},
 	}
@@ -67,13 +67,13 @@ func TestMigrateProviders_NormalizesKey(t *testing.T) {
 }
 
 func TestMigrateProviders_FixesOldDefaultURL(t *testing.T) {
-	raw := map[string]interface{}{
-		"dmxapi": map[string]interface{}{
+	raw := map[string]any{
+		"dmxapi": map[string]any{
 			"baseUrl": "https://www.dmxapi.cn",
 			"apiKey":  "sk-test",
 			"api":     "anthropic-messages",
-			"models": []interface{}{
-				map[string]interface{}{"id": "claude-opus-4-6"},
+			"models": []any{
+				map[string]any{"id": "claude-opus-4-6"},
 			},
 		},
 	}
@@ -87,12 +87,12 @@ func TestMigrateProviders_FixesOldDefaultURL(t *testing.T) {
 }
 
 func TestMigrateProviders_InfersModelsFromPrimary(t *testing.T) {
-	raw := map[string]interface{}{
-		"dmxapi": map[string]interface{}{
+	raw := map[string]any{
+		"dmxapi": map[string]any{
 			"baseUrl": "https://api.dmxapi.cn/v1",
 			"apiKey":  "sk-test",
 			"api":     "anthropic-messages",
-			"models":  []interface{}{}, // 空
+			"models":  []any{}, // 空
 		},
 	}
 	providers, logs := MigrateProviders(raw, "dmxapi/claude-opus-4-6")
@@ -105,12 +105,12 @@ func TestMigrateProviders_InfersModelsFromPrimary(t *testing.T) {
 }
 
 func TestMigrateProviders_EmptyModels_NoInference(t *testing.T) {
-	raw := map[string]interface{}{
-		"dmxapi": map[string]interface{}{
+	raw := map[string]any{
+		"dmxapi": map[string]any{
 			"baseUrl": "https://api.dmxapi.cn/v1",
 			"apiKey":  "sk-test",
 			"api":     "openai-completions",
-			"models":  []interface{}{},
+			"models":  []any{},
 		},
 	}
 	// primary 来自不同 provider，不应推断
