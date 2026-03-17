@@ -317,7 +317,8 @@ var apiFormatOpts = []huh.Option[string]{
 
 func editProvider(p config.ProviderConfig) (config.ProviderConfig, error) {
 	name := p.Name
-	baseUrl := p.BaseUrl
+	// 展示时去掉 /v1 后缀，保存时再自动补回
+	baseUrl := strings.TrimSuffix(strings.TrimRight(p.BaseUrl, "/"), "/v1")
 	apiKey := p.ApiKey
 	apiFormat := p.ApiFormat
 	if apiFormat == "" {
@@ -369,7 +370,8 @@ func editProvider(p config.ProviderConfig) (config.ProviderConfig, error) {
 			Value(&name),
 		huh.NewInput().
 			Title("Base URL").
-			Placeholder("https://www.dmxapi.cn/v1").
+			Description("末尾的 /v1 会自动补全，无需手动填写").
+			Placeholder("https://www.dmxapi.cn").
 			Validate(func(s string) error {
 				s = strings.TrimSpace(s)
 				if s == "" {
@@ -421,6 +423,12 @@ func editProvider(p config.ProviderConfig) (config.ProviderConfig, error) {
 			os.Exit(0)
 		}
 		return config.ProviderConfig{}, err
+	}
+
+	// 自动补全 /v1 后缀
+	baseUrl = strings.TrimRight(strings.TrimSpace(baseUrl), "/")
+	if !strings.HasSuffix(baseUrl, "/v1") {
+		baseUrl = baseUrl + "/v1"
 	}
 
 	// 整理模型列表
