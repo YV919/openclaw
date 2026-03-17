@@ -15,7 +15,6 @@ var (
 // NormalizeSlug 将任意字符串转为合法的 provider slug（小写字母、数字、连字符）
 func NormalizeSlug(s string) string {
 	s = strings.ToLower(s)
-	s = strings.ReplaceAll(s, ".", "-")
 	s = slugInvalid.ReplaceAllString(s, "-")
 	s = slugMultiDash.ReplaceAllString(s, "-")
 	s = strings.Trim(s, "-")
@@ -40,6 +39,7 @@ func MigrateProviders(
 ) ([]ProviderConfig, []string) {
 	var providers []ProviderConfig
 	var logs []string
+	seen := make(map[string]int) // slug → 已使用次数，用于去重
 
 	for key, val := range rawProviders {
 		pMap, ok := val.(map[string]any)
@@ -68,6 +68,14 @@ func MigrateProviders(
 		}
 		name = normalized
 
+		// 去重：若规范化后的 slug 已被占用，追加数字后缀
+		if count := seen[name]; count > 0 {
+			deduped := fmt.Sprintf("%s-%d", name, count+1)
+			logs = append(logs, fmt.Sprintf("provider slug %q 冲突，已重命名为 %q", name, deduped))
+			name = deduped
+		}
+		seen[normalized]++
+
 		baseUrl, _ := pMap["baseUrl"].(string)
 		apiKey, _ := pMap["apiKey"].(string)
 		apiFormat, _ := pMap["api"].(string)
@@ -91,13 +99,19 @@ func MigrateProviders(
 		}
 
 		// 修复 3：models 数组为空 → 从 primary 反推
+		// 同时尝试规范化后的 name 和原始 key，以应对 primary 中存的是原始 key 的情况
 		if len(modelIDs) == 0 && primary != "" {
-			// primary 格式为 "providerName/modelId"
-			prefix := name + "/"
-			if strings.HasPrefix(primary, prefix) {
-				inferredID := primary[len(prefix):]
-				modelIDs = append(modelIDs, inferredID)
-				logs = append(logs, fmt.Sprintf("provider %q 的模型列表为空，已从 primary 推断补全: %q", name, inferredID))
+			for _, candidate := range []string{name, key} {
+				if candidate == "" {
+					continue
+				}
+				prefix := candidate + "/"
+				if strings.HasPrefix(primary, prefix) {
+					inferredID := primary[len(prefix):]
+					modelIDs = append(modelIDs, inferredID)
+					logs = append(logs, fmt.Sprintf("provider %q 的模型列表为空，已从 primary 推断补全: %q", name, inferredID))
+					break
+				}
 			}
 		}
 

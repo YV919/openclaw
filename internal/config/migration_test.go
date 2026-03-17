@@ -142,3 +142,53 @@ func TestMigrateProviders_EmptyModels_NoInference(t *testing.T) {
 		t.Errorf("expected no models inferred, got %v", providers[0].Models)
 	}
 }
+
+func TestMigrateProviders_PrimaryMatchesOriginalKey(t *testing.T) {
+	raw := map[string]any{
+		"My Provider": map[string]any{
+			"baseUrl": "https://api.example.com/v1",
+			"apiKey":  "sk-test",
+			"api":     "openai-completions",
+			"models":  []any{},
+		},
+	}
+	// primary 里存的是原始 key "My Provider/gpt-4o"
+	providers, logs := MigrateProviders(raw, "My Provider/gpt-4o")
+	if len(providers[0].Models) != 1 || providers[0].Models[0] != "gpt-4o" {
+		t.Errorf("expected model inferred from original key, got %v", providers[0].Models)
+	}
+	if len(logs) == 0 {
+		t.Error("expected migration log for model inference")
+	}
+}
+
+func TestMigrateProviders_SlugCollision_BothPreserved(t *testing.T) {
+	raw := map[string]any{
+		"my-proxy": map[string]any{
+			"baseUrl": "https://api1.example.com/v1",
+			"apiKey":  "sk-1",
+			"api":     "openai-completions",
+			"models":  []any{map[string]any{"id": "gpt-4o"}},
+		},
+		"my.proxy": map[string]any{
+			"baseUrl": "https://api2.example.com/v1",
+			"apiKey":  "sk-2",
+			"api":     "openai-completions",
+			"models":  []any{map[string]any{"id": "gpt-3.5-turbo"}},
+		},
+	}
+	providers, logs := MigrateProviders(raw, "")
+	if len(providers) != 2 {
+		t.Fatalf("expected 2 providers, got %d", len(providers))
+	}
+	names := map[string]bool{providers[0].Name: true, providers[1].Name: true}
+	if !names["my-proxy"] {
+		t.Errorf("expected one provider named %q, got names: %v", "my-proxy", names)
+	}
+	if !names["my-proxy-2"] {
+		t.Errorf("expected deduped provider named %q, got names: %v", "my-proxy-2", names)
+	}
+	if len(logs) == 0 {
+		t.Error("expected migration log for slug collision")
+	}
+}
