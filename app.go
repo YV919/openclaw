@@ -169,7 +169,7 @@ func deleteProvider(fullCfg *config.FullConfig, name string) error {
 	}
 
 	// 从 Providers 中移除
-	newProviders := fullCfg.Providers[:0]
+	newProviders := make([]config.ProviderConfig, 0, len(fullCfg.Providers))
 	for _, p := range fullCfg.Providers {
 		if p.Name != name {
 			newProviders = append(newProviders, p)
