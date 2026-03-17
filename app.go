@@ -394,7 +394,7 @@ func editProvider(p config.ProviderConfig) (config.ProviderConfig, error) {
 			Value(&apiKey),
 		huh.NewMultiSelect[string]().
 			Title("模型列表").
-			Description("选择此 provider 支持的模型（至少一项）；可同时选「自定义...」再在下方填入自定义名称").
+			Description("空格/x 切换选中，↑↓ 移动，enter 确认\n选择此 provider 支持的模型（至少一项）；可同时选「自定义...」再在下方填入自定义名称").
 			Options(presetOpts...).
 			Validate(func(selected []string) error {
 				// 只检查完全未选的情况；选了 __custom__ 放行，由 form.Run() 后的逻辑做最终校验
