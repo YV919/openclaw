@@ -537,3 +537,228 @@ func (cm *ConfigManager) cleanOldBackups(configPath string, maxKeep int) {
 		}
 	}
 }
+
+// SaveFullConfig 将工具视图写回磁盘。
+// 保留 openclaw.json 中与模型/agent 无关的字段（gateway、tools、session 等）。
+func (cm *ConfigManager) SaveFullConfig(cfg *FullConfig) error {
+	// 校验
+	if len(cfg.Providers) == 0 {
+		return fmt.Errorf("至少需要配置一个 provider")
+	}
+	for _, p := range cfg.Providers {
+		if len(p.Models) == 0 {
+			return fmt.Errorf("provider %q 的模型列表不能为空", p.Name)
+		}
+		if p.ApiFormat == "" {
+			return fmt.Errorf("provider %q 的 API 格式不能为空", p.Name)
+		}
+	}
+
+	// 加载现有配置（保留无关字段），文件不存在时从空对象开始
+	raw, err := cm.LoadConfig()
+	if err != nil {
+		if os.IsNotExist(err) || strings.Contains(err.Error(), "不存在") {
+			raw = map[string]any{}
+		} else {
+			return err
+		}
+	}
+
+	// 构建 models.providers
+	providersMap := map[string]any{}
+	for _, p := range cfg.Providers {
+		modelsList := make([]any, 0, len(p.Models))
+		for _, id := range p.Models {
+			modelsList = append(modelsList, map[string]any{
+				"id":            id,
+				"name":          id,
+				"reasoning":     false,
+				"input":         []string{"text"},
+				"cost":          map[string]any{"input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0},
+				"contextWindow": 200000,
+				"maxTokens":     8192,
+			})
+		}
+		providersMap[p.Name] = map[string]any{
+			"baseUrl": p.BaseUrl,
+			"apiKey":  p.ApiKey,
+			"api":     p.ApiFormat,
+			"models":  modelsList,
+		}
+	}
+
+	models, ok := raw["models"].(map[string]any)
+	if !ok {
+		models = map[string]any{}
+		raw["models"] = models
+	}
+	models["providers"] = providersMap
+	if models["mode"] == nil {
+		models["mode"] = "merge"
+	}
+
+	// 确保 agents 结构存在
+	agents, ok := raw["agents"].(map[string]any)
+	if !ok {
+		agents = map[string]any{}
+		raw["agents"] = agents
+	}
+	defaults, ok := agents["defaults"].(map[string]any)
+	if !ok {
+		defaults = map[string]any{}
+		agents["defaults"] = defaults
+	}
+
+	// 构建 agents.defaults.models 允许列表
+	allowedModels := map[string]any{}
+	for _, p := range cfg.Providers {
+		for _, m := range p.Models {
+			fullID := p.Name + "/" + m
+			allowedModels[fullID] = map[string]any{"alias": m}
+		}
+	}
+	defaults["models"] = allowedModels
+
+	// 主 agent model
+	if cfg.MainAgent.Primary != "" {
+		modelField := map[string]any{"primary": cfg.MainAgent.Primary}
+		if cfg.MainAgent.Fallback != "" {
+			modelField["fallbacks"] = []string{cfg.MainAgent.Fallback}
+		}
+		defaults["model"] = modelField
+	}
+
+	// 子 agent model
+	subagents, ok := defaults["subagents"].(map[string]any)
+	if !ok {
+		subagents = map[string]any{}
+	}
+	if cfg.SubAgent.Primary != "" {
+		subModel := map[string]any{"primary": cfg.SubAgent.Primary}
+		if cfg.SubAgent.Fallback != "" {
+			subModel["fallbacks"] = []string{cfg.SubAgent.Fallback}
+		}
+		subagents["model"] = subModel
+	} else {
+		// Primary 为空 = 同主 agent，清除旧有 subagents.model
+		delete(subagents, "model")
+	}
+	defaults["subagents"] = subagents
+
+	// agents.list upsert（按 ID，保留其他条目）
+	if len(cfg.NamedAgents) > 0 {
+		var existingList []any
+		if ag, ok := raw["agents"].(map[string]any); ok {
+			existingList, _ = ag["list"].([]any)
+		}
+
+		// 构建 ID → index 映射
+		indexByID := map[string]int{}
+		for i, item := range existingList {
+			if m, ok := item.(map[string]any); ok {
+				if id, ok := m["id"].(string); ok {
+					indexByID[id] = i
+				}
+			}
+		}
+
+		for _, na := range cfg.NamedAgents {
+			var modelField any
+			if na.Model.Primary != "" {
+				mf := map[string]any{"primary": na.Model.Primary}
+				if na.Model.Fallback != "" {
+					mf["fallbacks"] = []string{na.Model.Fallback}
+				}
+				modelField = mf
+			}
+
+			if idx, exists := indexByID[na.ID]; exists {
+				// upsert: 只覆写 model 字段
+				entry := existingList[idx].(map[string]any)
+				if modelField != nil {
+					entry["model"] = modelField
+				} else {
+					delete(entry, "model")
+				}
+			} else {
+				// 追加新条目
+				newEntry := map[string]any{"id": na.ID}
+				if modelField != nil {
+					newEntry["model"] = modelField
+				}
+				existingList = append(existingList, newEntry)
+			}
+		}
+		agents["list"] = existingList
+	}
+
+	// 保存主配置
+	if err := cm.SaveConfig(raw); err != nil {
+		return err
+	}
+
+	// 同步 auth-profiles.json
+	if err := cm.saveAllApiKeys(cfg.Providers); err != nil {
+		return err
+	}
+
+	// 同步 models.json
+	cm.syncModelsJSON(cfg.Providers)
+
+	return nil
+}
+
+// saveAllApiKeys 将所有 provider 的 ApiKey 写入 auth-profiles.json
+func (cm *ConfigManager) saveAllApiKeys(providers []ProviderConfig) error {
+	authProfiles, err := cm.LoadAuthProfiles()
+	if err != nil {
+		authProfiles = map[string]any{
+			"version":  1,
+			"profiles": map[string]any{},
+		}
+	}
+	profiles, ok := authProfiles["profiles"].(map[string]any)
+	if !ok {
+		profiles = map[string]any{}
+		authProfiles["profiles"] = profiles
+	}
+	for _, p := range providers {
+		profileKey := p.Name + ":default"
+		profiles[profileKey] = map[string]any{
+			"type":     "api_key",
+			"provider": p.Name,
+			"key":      p.ApiKey,
+		}
+	}
+	return cm.SaveAuthProfiles(authProfiles)
+}
+
+// syncModelsJSON 将所有 provider 的 baseUrl/api 同步写入 models.json
+func (cm *ConfigManager) syncModelsJSON(providers []ProviderConfig) {
+	modelsPath := filepath.Join(cm.homeDir, OpenClawDir, AuthProfilesDir, "models.json")
+	data, err := os.ReadFile(modelsPath)
+	if err != nil {
+		return // 文件不存在时跳过
+	}
+	var raw map[string]any
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return
+	}
+	rawProviders, ok := raw["providers"].(map[string]any)
+	if !ok {
+		return
+	}
+	for _, p := range providers {
+		if entry, ok := rawProviders[p.Name].(map[string]any); ok {
+			entry["baseUrl"] = p.BaseUrl
+			entry["api"] = p.ApiFormat
+			rawProviders[p.Name] = entry
+		}
+	}
+	raw["providers"] = rawProviders
+	updated, err := json.MarshalIndent(raw, "", "  ")
+	if err != nil {
+		return
+	}
+	os.WriteFile(modelsPath, append(updated, '\n'), 0600)
+}

@@ -142,3 +142,169 @@ func TestLoadFullConfig_AppliesMigration(t *testing.T) {
 		t.Error("expected migration logs")
 	}
 }
+
+func TestSaveFullConfig_RejectsEmptyProviders(t *testing.T) {
+	cm, _, _ := setupTestHome(t)
+	err := cm.SaveFullConfig(&FullConfig{})
+	if err == nil {
+		t.Fatal("expected error for empty providers")
+	}
+}
+
+func TestSaveFullConfig_RejectsEmptyModels(t *testing.T) {
+	cm, _, _ := setupTestHome(t)
+	cfg := &FullConfig{
+		Providers: []ProviderConfig{
+			{Name: "dmxapi", BaseUrl: "https://api.dmxapi.cn/v1", ApiKey: "sk-test",
+				Models: []string{}, ApiFormat: "anthropic-messages"},
+		},
+	}
+	err := cm.SaveFullConfig(cfg)
+	if err == nil {
+		t.Fatal("expected error for provider with empty models")
+	}
+}
+
+func TestSaveFullConfig_WritesAndReloads(t *testing.T) {
+	cm, ocDir, _ := setupTestHome(t)
+
+	// 先写一个基础 openclaw.json（模拟 onboard 后状态）
+	baseRaw := map[string]any{
+		"gateway": map[string]any{"port": 18789},
+		"tools":   map[string]any{"profile": "coding"},
+	}
+	writeJSON(t, filepath.Join(ocDir, ConfigFile), baseRaw)
+	writeJSON(t, filepath.Join(ocDir, AuthProfilesDir, AuthProfilesFile), map[string]any{
+		"version":  1,
+		"profiles": map[string]any{},
+	})
+
+	cfg := &FullConfig{
+		Providers: []ProviderConfig{
+			{
+				Name:      "dmxapi",
+				BaseUrl:   "https://api.dmxapi.cn/v1",
+				ApiKey:    "sk-test-key",
+				Models:    []string{"claude-opus-4-6", "claude-sonnet-4-6"},
+				ApiFormat: "anthropic-messages",
+			},
+		},
+		MainAgent: AgentModelConfig{Primary: "dmxapi/claude-opus-4-6"},
+		SubAgent:  AgentModelConfig{Primary: "dmxapi/claude-sonnet-4-6"},
+	}
+
+	if err := cm.SaveFullConfig(cfg); err != nil {
+		t.Fatalf("SaveFullConfig failed: %v", err)
+	}
+
+	// 重新加载验证
+	reloaded, _, err := cm.LoadFullConfig()
+	if err != nil {
+		t.Fatalf("LoadFullConfig after save failed: %v", err)
+	}
+	if len(reloaded.Providers) != 1 {
+		t.Fatalf("expected 1 provider, got %d", len(reloaded.Providers))
+	}
+	if reloaded.Providers[0].ApiKey != "sk-test-key" {
+		t.Errorf("expected api key, got %q", reloaded.Providers[0].ApiKey)
+	}
+	if reloaded.MainAgent.Primary != "dmxapi/claude-opus-4-6" {
+		t.Errorf("expected main agent primary, got %q", reloaded.MainAgent.Primary)
+	}
+	if reloaded.SubAgent.Primary != "dmxapi/claude-sonnet-4-6" {
+		t.Errorf("expected sub agent primary, got %q", reloaded.SubAgent.Primary)
+	}
+}
+
+func TestSaveFullConfig_PreservesUnrelatedFields(t *testing.T) {
+	cm, ocDir, _ := setupTestHome(t)
+
+	baseRaw := map[string]any{
+		"gateway": map[string]any{"port": 18789},
+		"tools":   map[string]any{"profile": "coding"},
+		"session": map[string]any{"dmScope": "per-channel-peer"},
+	}
+	writeJSON(t, filepath.Join(ocDir, ConfigFile), baseRaw)
+	writeJSON(t, filepath.Join(ocDir, AuthProfilesDir, AuthProfilesFile), map[string]any{
+		"version":  1,
+		"profiles": map[string]any{},
+	})
+
+	cfg := &FullConfig{
+		Providers: []ProviderConfig{
+			{Name: "dmxapi", BaseUrl: "https://api.dmxapi.cn/v1", ApiKey: "sk-x",
+				Models: []string{"claude-opus-4-6"}, ApiFormat: "anthropic-messages"},
+		},
+		MainAgent: AgentModelConfig{Primary: "dmxapi/claude-opus-4-6"},
+	}
+	if err := cm.SaveFullConfig(cfg); err != nil {
+		t.Fatalf("SaveFullConfig failed: %v", err)
+	}
+
+	// 读取原始 JSON 检查无关字段是否保留
+	data, _ := os.ReadFile(filepath.Join(ocDir, ConfigFile))
+	var saved map[string]any
+	json.Unmarshal(data, &saved)
+
+	if gateway, ok := saved["gateway"].(map[string]any); !ok || gateway["port"] != float64(18789) {
+		t.Error("gateway field should be preserved")
+	}
+	if tools, ok := saved["tools"].(map[string]any); !ok || tools["profile"] != "coding" {
+		t.Error("tools field should be preserved")
+	}
+}
+
+func TestSaveFullConfig_NamedAgentUpsert(t *testing.T) {
+	cm, ocDir, _ := setupTestHome(t)
+
+	// 原始 config 含一个 agents.list 条目（其他工具管理）
+	baseRaw := map[string]any{
+		"agents": map[string]any{
+			"list": []any{
+				map[string]any{
+					"id":   "existing-agent",
+					"name": "Existing",
+				},
+			},
+		},
+	}
+	writeJSON(t, filepath.Join(ocDir, ConfigFile), baseRaw)
+	writeJSON(t, filepath.Join(ocDir, AuthProfilesDir, AuthProfilesFile), map[string]any{
+		"version":  1,
+		"profiles": map[string]any{},
+	})
+
+	cfg := &FullConfig{
+		Providers: []ProviderConfig{
+			{Name: "dmxapi", BaseUrl: "https://api.dmxapi.cn/v1", ApiKey: "sk-x",
+				Models: []string{"claude-opus-4-6"}, ApiFormat: "anthropic-messages"},
+		},
+		MainAgent: AgentModelConfig{Primary: "dmxapi/claude-opus-4-6"},
+		NamedAgents: []NamedAgentConfig{
+			{ID: "my-coder", Model: AgentModelConfig{Primary: "dmxapi/claude-opus-4-6"}},
+		},
+	}
+	if err := cm.SaveFullConfig(cfg); err != nil {
+		t.Fatalf("SaveFullConfig failed: %v", err)
+	}
+
+	// 验证 existing-agent 未被删除，my-coder 已添加
+	data, _ := os.ReadFile(filepath.Join(ocDir, ConfigFile))
+	var saved map[string]any
+	json.Unmarshal(data, &saved)
+
+	agents := saved["agents"].(map[string]any)
+	list := agents["list"].([]any)
+
+	ids := map[string]bool{}
+	for _, item := range list {
+		m := item.(map[string]any)
+		ids[m["id"].(string)] = true
+	}
+	if !ids["existing-agent"] {
+		t.Error("existing-agent should be preserved")
+	}
+	if !ids["my-coder"] {
+		t.Error("my-coder should be added")
+	}
+}
