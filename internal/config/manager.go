@@ -555,12 +555,14 @@ func (cm *ConfigManager) SaveFullConfig(cfg *FullConfig) error {
 	}
 
 	// 加载现有配置（保留无关字段），文件不存在时从空对象开始
-	raw, err := cm.LoadConfig()
-	if err != nil {
-		if os.IsNotExist(err) || strings.Contains(err.Error(), "不存在") {
-			raw = map[string]any{}
-		} else {
-			return err
+	var raw map[string]any
+	if _, statErr := os.Stat(cm.GetConfigPath()); os.IsNotExist(statErr) {
+		raw = map[string]any{}
+	} else {
+		var loadErr error
+		raw, loadErr = cm.LoadConfig()
+		if loadErr != nil {
+			return loadErr
 		}
 	}
 
@@ -674,7 +676,10 @@ func (cm *ConfigManager) SaveFullConfig(cfg *FullConfig) error {
 
 			if idx, exists := indexByID[na.ID]; exists {
 				// upsert: 只覆写 model 字段
-				entry := existingList[idx].(map[string]any)
+				entry, ok := existingList[idx].(map[string]any)
+				if !ok {
+					continue
+				}
 				if modelField != nil {
 					entry["model"] = modelField
 				} else {
@@ -702,8 +707,10 @@ func (cm *ConfigManager) SaveFullConfig(cfg *FullConfig) error {
 		return err
 	}
 
-	// 同步 models.json
-	cm.syncModelsJSON(cfg.Providers)
+	// 同步 models.json（尽力而为，失败时输出警告）
+	if syncErr := cm.syncModelsJSON(cfg.Providers); syncErr != nil {
+		fmt.Fprintf(os.Stderr, "警告: 同步 models.json 失败: %v\n", syncErr)
+	}
 
 	return nil
 }
@@ -733,20 +740,24 @@ func (cm *ConfigManager) saveAllApiKeys(providers []ProviderConfig) error {
 	return cm.SaveAuthProfiles(authProfiles)
 }
 
-// syncModelsJSON 将所有 provider 的 baseUrl/api 同步写入 models.json
-func (cm *ConfigManager) syncModelsJSON(providers []ProviderConfig) {
+// syncModelsJSON 将所有 provider 的 baseUrl/api 同步写入 models.json。
+// 文件不存在时跳过（不视为错误）；新 provider 若不在 models.json 中则跳过（由 openclaw 启动时创建）。
+func (cm *ConfigManager) syncModelsJSON(providers []ProviderConfig) error {
 	modelsPath := filepath.Join(cm.homeDir, OpenClawDir, AuthProfilesDir, "models.json")
 	data, err := os.ReadFile(modelsPath)
 	if err != nil {
-		return // 文件不存在时跳过
+		if os.IsNotExist(err) {
+			return nil // 文件不存在时跳过
+		}
+		return fmt.Errorf("读取 models.json 失败: %w", err)
 	}
 	var raw map[string]any
 	if err := json.Unmarshal(data, &raw); err != nil {
-		return
+		return fmt.Errorf("解析 models.json 失败: %w", err)
 	}
 	rawProviders, ok := raw["providers"].(map[string]any)
 	if !ok {
-		return
+		return nil
 	}
 	for _, p := range providers {
 		if entry, ok := rawProviders[p.Name].(map[string]any); ok {
@@ -758,7 +769,10 @@ func (cm *ConfigManager) syncModelsJSON(providers []ProviderConfig) {
 	raw["providers"] = rawProviders
 	updated, err := json.MarshalIndent(raw, "", "  ")
 	if err != nil {
-		return
+		return fmt.Errorf("序列化 models.json 失败: %w", err)
 	}
-	os.WriteFile(modelsPath, append(updated, '\n'), 0600)
+	if err := os.WriteFile(modelsPath, append(updated, '\n'), 0600); err != nil {
+		return fmt.Errorf("写入 models.json 失败: %w", err)
+	}
+	return nil
 }
