@@ -610,8 +610,7 @@ func pickNamedAgentItemAction(id string) (string, error) {
 	return selected, nil
 }
 
-// editNamedAgent 编辑已有命名 Agent（Agent ID 只读）
-// 注：__add__ 分支目前只收集 Primary（与现有行为一致），editNamedAgent 支持 Primary + Fallback。
+// editNamedAgent 编辑已有命名 Agent（Agent ID 只读），支持 Primary + Fallback。
 func editNamedAgent(
 	agent config.NamedAgentConfig,
 	allOptsWithSame []huh.Option[string],
