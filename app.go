@@ -567,10 +567,7 @@ func pickNamedAgentAction(agents []config.NamedAgentConfig) (string, error) {
 		label := fmt.Sprintf("%s  (%s)", na.ID, modelLabel)
 		opts = append(opts, huh.NewOption(label, na.ID))
 	}
-	opts = append(opts, huh.NewOption("[+ 添加新命名 Agent]", "__add__"))
-	if len(agents) > 0 {
-		opts = append(opts, huh.NewOption("[继续 →]", "__continue__"))
-	}
+	opts = append(opts, huh.NewOption("[继续 →]", "__continue__"))
 
 	var selected string
 	form := newForm(huh.NewGroup(
@@ -674,54 +671,6 @@ func (a *App) runStep4NamedAgents(
 		switch action {
 		case "__continue__":
 			return nil
-
-		case "__add__":
-			agentID := ""
-			modelPrimary := ""
-			if len(allOpts) > 0 {
-				modelPrimary = allOpts[0].Value
-			}
-			form := huh.NewForm(huh.NewGroup(
-				huh.NewInput().
-					Title("Agent ID").
-					Placeholder("my-coder").
-					Validate(func(s string) error {
-						if strings.TrimSpace(s) == "" {
-							return fmt.Errorf("Agent ID 不能为空")
-						}
-						return nil
-					}).
-					Value(&agentID),
-				huh.NewSelect[string]().
-					Title("使用模型").
-					Options(allOptsWithSame...).
-					Value(&modelPrimary),
-			))
-			if err := form.Run(); err != nil {
-				if errors.Is(err, huh.ErrUserAborted) {
-					fmt.Fprintln(os.Stderr, "已取消")
-					os.Exit(0)
-				}
-				return err
-			}
-			id := strings.TrimSpace(agentID)
-			upserted := false
-			for i, na := range fullCfg.NamedAgents {
-				if na.ID == id {
-					fullCfg.NamedAgents[i] = config.NamedAgentConfig{
-						ID:    id,
-						Model: config.AgentModelConfig{Primary: modelPrimary},
-					}
-					upserted = true
-					break
-				}
-			}
-			if !upserted {
-				fullCfg.NamedAgents = append(fullCfg.NamedAgents, config.NamedAgentConfig{
-					ID:    id,
-					Model: config.AgentModelConfig{Primary: modelPrimary},
-				})
-			}
 
 		default:
 			// 选中已有 Agent → 二级菜单
