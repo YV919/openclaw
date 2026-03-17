@@ -7,6 +7,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/huh"
 	"github.com/charmbracelet/lipgloss"
 	"openclaw_config/internal/config"
@@ -288,6 +289,25 @@ func pickProviderItemAction(name string) (string, error) {
 	return selected, nil
 }
 
+// chineseKeyMap 返回带中文说明的 KeyMap，仅覆盖 MultiSelect 和 Select 的提示文字
+func chineseKeyMap() *huh.KeyMap {
+	km := huh.NewDefaultKeyMap()
+	km.MultiSelect.Toggle = key.NewBinding(key.WithKeys(" ", "x"), key.WithHelp("x", "切换选中"))
+	km.MultiSelect.Up = key.NewBinding(key.WithKeys("up", "k", "ctrl+p"), key.WithHelp("↑", "向上"))
+	km.MultiSelect.Down = key.NewBinding(key.WithKeys("down", "j", "ctrl+n"), key.WithHelp("↓", "向下"))
+	km.MultiSelect.Filter = key.NewBinding(key.WithKeys("/"), key.WithHelp("/", "过滤"))
+	km.MultiSelect.Prev = key.NewBinding(key.WithKeys("shift+tab"), key.WithHelp("shift+tab", "返回"))
+	km.MultiSelect.Next = key.NewBinding(key.WithKeys("enter", "tab"), key.WithHelp("enter", "确认"))
+	km.MultiSelect.SelectAll = key.NewBinding(key.WithKeys("ctrl+a"), key.WithHelp("ctrl+a", "全选"))
+	km.MultiSelect.SelectNone = key.NewBinding(key.WithKeys("ctrl+a"), key.WithHelp("ctrl+a", "取消全选"), key.WithDisabled())
+	km.Select.Up = key.NewBinding(key.WithKeys("up", "k", "ctrl+k", "ctrl+p"), key.WithHelp("↑", "向上"))
+	km.Select.Down = key.NewBinding(key.WithKeys("down", "j", "ctrl+j", "ctrl+n"), key.WithHelp("↓", "向下"))
+	km.Select.Filter = key.NewBinding(key.WithKeys("/"), key.WithHelp("/", "过滤"))
+	km.Select.Prev = key.NewBinding(key.WithKeys("shift+tab"), key.WithHelp("shift+tab", "返回"))
+	km.Select.Next = key.NewBinding(key.WithKeys("enter", "tab"), key.WithHelp("enter", "确认"))
+	return km
+}
+
 var apiFormatOpts = []huh.Option[string]{
 	huh.NewOption("openai-completions  (GPT / 通用兼容)", "openai-completions"),
 	huh.NewOption("anthropic-messages  (Claude)", "anthropic-messages"),
@@ -331,7 +351,8 @@ func editProvider(p config.ProviderConfig) (config.ProviderConfig, error) {
 
 	form := huh.NewForm(huh.NewGroup(
 		huh.NewInput().
-			Title("Provider Name (slug)").
+			Title("Provider 标识名").
+			Description("唯一英文 ID，只含小写字母、数字和连字符，用于区分不同服务商（如 dmxapi-cn、dmxapi-ssvip）").
 			Placeholder("my-proxy").
 			Validate(func(s string) error {
 				s = strings.TrimSpace(s)
@@ -392,7 +413,7 @@ func editProvider(p config.ProviderConfig) (config.ProviderConfig, error) {
 			Description("不确定时选 openai-completions。若同一 provider 含不同格式模型，请分拆为多个 provider").
 			Options(apiFormatOpts...).
 			Value(&apiFormat),
-	))
+	)).WithKeyMap(chineseKeyMap())
 
 	if err := form.Run(); err != nil {
 		if errors.Is(err, huh.ErrUserAborted) {
