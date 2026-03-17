@@ -650,9 +650,7 @@ func (cm *ConfigManager) SaveFullConfig(cfg *FullConfig) error {
 	// agents.list：先过滤删除，再 upsert（按 ID，保留无 model 字段的外部条目）
 	{
 		var existingList []any
-		if ag, ok := raw["agents"].(map[string]any); ok {
-			existingList, _ = ag["list"].([]any)
-		}
+		existingList, _ = agents["list"].([]any)
 
 		// 构建本轮管理的 ID 集合
 		managedIDs := make(map[string]bool, len(cfg.NamedAgents))
