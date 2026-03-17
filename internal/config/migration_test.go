@@ -104,6 +104,29 @@ func TestMigrateProviders_InfersModelsFromPrimary(t *testing.T) {
 	}
 }
 
+func TestMigrateProviders_EmptyKey_UsesBaseUrl(t *testing.T) {
+	raw := map[string]any{
+		"": map[string]any{
+			"baseUrl": "https://api.example.com/v1",
+			"apiKey":  "sk-test",
+			"api":     "openai-completions",
+			"models": []any{
+				map[string]any{"id": "gpt-4o"},
+			},
+		},
+	}
+	providers, logs := MigrateProviders(raw, "")
+	if len(providers) != 1 {
+		t.Fatalf("expected 1 provider, got %d", len(providers))
+	}
+	if providers[0].Name != "api-example-com" {
+		t.Errorf("expected name %q, got %q", "api-example-com", providers[0].Name)
+	}
+	if len(logs) == 0 {
+		t.Error("expected migration log entry for empty key")
+	}
+}
+
 func TestMigrateProviders_EmptyModels_NoInference(t *testing.T) {
 	raw := map[string]any{
 		"dmxapi": map[string]any{

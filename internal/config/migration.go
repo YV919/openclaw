@@ -52,13 +52,17 @@ func MigrateProviders(
 		// 修复 1：provider key 含非法字符或大写 → 规范化
 		normalized := NormalizeSlug(name)
 		if normalized == "" {
-			// key 规范化后为空，从 baseUrl 生成
+			// key 为空或规范化后为空，从 baseUrl 生成
 			rawBaseUrl, _ := pMap["baseUrl"].(string)
 			normalized = SlugFromURL(rawBaseUrl)
 			if normalized == "" {
 				normalized = "provider"
 			}
-			logs = append(logs, fmt.Sprintf("provider key %q 规范化失败，已重命名为 %q", key, normalized))
+			if key == "" {
+				logs = append(logs, fmt.Sprintf("provider key 为空，已从 baseUrl 生成 %q", normalized))
+			} else {
+				logs = append(logs, fmt.Sprintf("provider key %q 规范化失败，已重命名为 %q", key, normalized))
+			}
 		} else if normalized != name {
 			logs = append(logs, fmt.Sprintf("provider key %q 含非法字符，已规范化为 %q", key, normalized))
 		}
