@@ -101,6 +101,16 @@ func buildAllModelOpts(providers []config.ProviderConfig) []huh.Option[string] {
 	return opts
 }
 
+// containsOptValue 检查 opts 中是否存在 value 对应的选项
+func containsOptValue(opts []huh.Option[string], value string) bool {
+	for _, o := range opts {
+		if o.Value == value {
+			return true
+		}
+	}
+	return false
+}
+
 // ── Step 1: Provider 管理 ──────────────────────────────────────────────────
 
 func (a *App) runStep1Providers(fullCfg *config.FullConfig) error {
@@ -180,10 +190,21 @@ func editProvider(p config.ProviderConfig) (config.ProviderConfig, error) {
 		apiFormat = "openai-completions"
 	}
 
-	// 构建 MultiSelect 选项
+	// 构建预设模型集合，用于快速判断自定义模型
+	presetSet := make(map[string]bool, len(models.PresetModels))
+	for _, m := range models.PresetModels {
+		presetSet[m] = true
+	}
+
+	// 构建 MultiSelect 选项：预设 + 已有自定义模型 + "自定义..."
 	presetOpts := make([]huh.Option[string], 0, len(models.PresetModels)+1)
 	for _, m := range models.PresetModels {
 		presetOpts = append(presetOpts, huh.NewOption(m, m))
+	}
+	for _, m := range p.Models {
+		if !presetSet[m] {
+			presetOpts = append(presetOpts, huh.NewOption(m+" (自定义)", m))
+		}
 	}
 	presetOpts = append(presetOpts, huh.NewOption("自定义...", "__custom__"))
 
@@ -305,6 +326,12 @@ func (a *App) runStep2MainAgent(
 ) error {
 	primary := fullCfg.MainAgent.Primary
 	fallback := fullCfg.MainAgent.Fallback
+	if !containsOptValue(allOpts, primary) {
+		primary = ""
+	}
+	if !containsOptValue(allOptsWithNone, fallback) {
+		fallback = ""
+	}
 	if primary == "" && len(allOpts) > 0 {
 		primary = allOpts[0].Value
 	}
@@ -370,6 +397,12 @@ func (a *App) runStep3SubAgent(
 	// 单独指定
 	primary := fullCfg.SubAgent.Primary
 	fallback := fullCfg.SubAgent.Fallback
+	if !containsOptValue(allOpts, primary) {
+		primary = ""
+	}
+	if !containsOptValue(allOptsWithNone, fallback) {
+		fallback = ""
+	}
 	if primary == "" && len(allOpts) > 0 {
 		primary = allOpts[0].Value
 	}
@@ -456,10 +489,24 @@ func (a *App) runStep4NamedAgents(
 			return err
 		}
 
-		fullCfg.NamedAgents = append(fullCfg.NamedAgents, config.NamedAgentConfig{
-			ID:    strings.TrimSpace(agentID),
-			Model: config.AgentModelConfig{Primary: modelPrimary},
-		})
+		id := strings.TrimSpace(agentID)
+		upserted := false
+		for i, na := range fullCfg.NamedAgents {
+			if na.ID == id {
+				fullCfg.NamedAgents[i] = config.NamedAgentConfig{
+					ID:    id,
+					Model: config.AgentModelConfig{Primary: modelPrimary},
+				}
+				upserted = true
+				break
+			}
+		}
+		if !upserted {
+			fullCfg.NamedAgents = append(fullCfg.NamedAgents, config.NamedAgentConfig{
+				ID:    id,
+				Model: config.AgentModelConfig{Primary: modelPrimary},
+			})
+		}
 
 		var continueAdding bool
 		formContinue := huh.NewForm(huh.NewGroup(
