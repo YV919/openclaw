@@ -153,7 +153,7 @@ func deleteProvider(fullCfg *config.FullConfig, name string) error {
 	}
 
 	var confirmed bool
-	form := huh.NewForm(huh.NewGroup(
+	form := newForm(huh.NewGroup(
 		huh.NewConfirm().
 			Title(fmt.Sprintf("确认删除 Provider %q？", name)).
 			Description("删除后相关 NamedAgent 的模型引用将被清空，主/子 Agent 的引用将在下一步重新选择。").
@@ -249,7 +249,7 @@ func pickProviderAction(providers []config.ProviderConfig) (string, error) {
 	}
 
 	var selected string
-	form := huh.NewForm(huh.NewGroup(
+	form := newForm(huh.NewGroup(
 		huh.NewSelect[string]().
 			Title("Provider 管理").
 			Description("选择要操作的 Provider，或添加新的").
@@ -269,7 +269,7 @@ func pickProviderAction(providers []config.ProviderConfig) (string, error) {
 // pickProviderItemAction 弹出 Provider 二级操作菜单
 func pickProviderItemAction(name string) (string, error) {
 	var selected string
-	form := huh.NewForm(huh.NewGroup(
+	form := newForm(huh.NewGroup(
 		huh.NewSelect[string]().
 			Title(fmt.Sprintf("Provider: %s", name)).
 			Options(
@@ -308,6 +308,11 @@ func chineseKeyMap() *huh.KeyMap {
 	return km
 }
 
+// newForm 创建带中文 KeyMap 的 huh.Form（统一入口，避免重复调用 WithKeyMap）
+func newForm(groups ...*huh.Group) *huh.Form {
+	return huh.NewForm(groups...).WithKeyMap(chineseKeyMap())
+}
+
 func editProvider(p config.ProviderConfig) (config.ProviderConfig, error) {
 	name := p.Name
 	// 格式感知的展示剥离：仅对自动补全 /v1 的格式剥除，google-generative-ai 原样
@@ -342,7 +347,7 @@ func editProvider(p config.ProviderConfig) (config.ProviderConfig, error) {
 
 	customModel := ""
 
-	form := huh.NewForm(huh.NewGroup(
+	form := newForm(huh.NewGroup(
 		huh.NewInput().
 			Title("Provider 标识名").
 			Description("唯一英文 ID，只含小写字母、数字和连字符，用于区分不同服务商（如 dmxapi-cn、dmxapi-ssvip）").
@@ -402,7 +407,7 @@ func editProvider(p config.ProviderConfig) (config.ProviderConfig, error) {
 			Title("自定义模型名称（可选，留空跳过）").
 			Placeholder("my-custom-model").
 			Value(&customModel),
-	)).WithKeyMap(chineseKeyMap())
+	))
 
 	if err := form.Run(); err != nil {
 		if errors.Is(err, huh.ErrUserAborted) {
@@ -459,7 +464,7 @@ func (a *App) runStep2MainAgent(
 		primary = allOpts[0].Value
 	}
 
-	form := huh.NewForm(huh.NewGroup(
+	form := newForm(huh.NewGroup(
 		huh.NewSelect[string]().
 			Title("主 Agent 模型 (Primary)").
 			Description("agents.defaults.model.primary").
@@ -495,7 +500,7 @@ func (a *App) runStep3SubAgent(
 		subChoice = "__custom__"
 	}
 
-	form1 := huh.NewForm(huh.NewGroup(
+	form1 := newForm(huh.NewGroup(
 		huh.NewSelect[string]().
 			Title("子 Agent 模型 (subagents)").
 			Options(
@@ -530,7 +535,7 @@ func (a *App) runStep3SubAgent(
 		primary = allOpts[0].Value
 	}
 
-	form2 := huh.NewForm(huh.NewGroup(
+	form2 := newForm(huh.NewGroup(
 		huh.NewSelect[string]().
 			Title("子 Agent 主模型 (Primary)").
 			Options(allOpts...).
@@ -568,7 +573,7 @@ func pickNamedAgentAction(agents []config.NamedAgentConfig) (string, error) {
 	}
 
 	var selected string
-	form := huh.NewForm(huh.NewGroup(
+	form := newForm(huh.NewGroup(
 		huh.NewSelect[string]().
 			Title("命名 Agent 管理").
 			Description("为特定 agent id 指定不同模型").
@@ -588,7 +593,7 @@ func pickNamedAgentAction(agents []config.NamedAgentConfig) (string, error) {
 // pickNamedAgentItemAction 命名 Agent 二级操作菜单
 func pickNamedAgentItemAction(id string) (string, error) {
 	var selected string
-	form := huh.NewForm(huh.NewGroup(
+	form := newForm(huh.NewGroup(
 		huh.NewSelect[string]().
 			Title(fmt.Sprintf("命名 Agent: %s", id)).
 			Options(
@@ -618,7 +623,7 @@ func editNamedAgent(
 	primary := agent.Model.Primary
 	fallback := agent.Model.Fallback
 
-	form := huh.NewForm(huh.NewGroup(
+	form := newForm(huh.NewGroup(
 		huh.NewNote().
 			Title("Agent ID").
 			Description(agent.ID),
@@ -780,7 +785,7 @@ func printSuccess(cfg *config.FullConfig) {
 	fmt.Println()
 	fmt.Println(box)
 
-	huh.NewForm(huh.NewGroup( //nolint:errcheck
+	newForm(huh.NewGroup( //nolint:errcheck
 		huh.NewNote().
 			Title("提示").
 			Description("✓ 配置已保存，下次请求时自动生效（支持热切换，无需重启网关）。").
