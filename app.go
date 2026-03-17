@@ -208,17 +208,29 @@ func (a *App) runStep1Providers(fullCfg *config.FullConfig) error {
 			}
 			fullCfg.Providers = append(fullCfg.Providers, p)
 		} else {
-			// 编辑已有 provider（action = provider name）
-			for i, p := range fullCfg.Providers {
-				if p.Name == action {
-					updated, err := editProvider(p)
-					if err != nil {
-						return err
+			// 选中已有 provider → 弹二级菜单
+			subAction, err := pickProviderItemAction(action)
+			if err != nil {
+				return err
+			}
+			switch subAction {
+			case "__edit__":
+				for i, p := range fullCfg.Providers {
+					if p.Name == action {
+						updated, err := editProvider(p)
+						if err != nil {
+							return err
+						}
+						fullCfg.Providers[i] = updated
+						break
 					}
-					fullCfg.Providers[i] = updated
-					break
+				}
+			case "__delete__":
+				if err := deleteProvider(fullCfg, action); err != nil {
+					return err
 				}
 			}
+			// "__back__" 直接继续外层 for
 		}
 	}
 	return nil
@@ -227,7 +239,7 @@ func (a *App) runStep1Providers(fullCfg *config.FullConfig) error {
 func pickProviderAction(providers []config.ProviderConfig) (string, error) {
 	var opts []huh.Option[string]
 	for _, p := range providers {
-		label := fmt.Sprintf("[编辑] %s  (%s)", p.Name, p.BaseUrl)
+		label := fmt.Sprintf("%s  (%s)", p.Name, p.BaseUrl)
 		opts = append(opts, huh.NewOption(label, p.Name))
 	}
 	opts = append(opts, huh.NewOption("[+ 添加新 Provider]", "__add__"))
@@ -239,8 +251,31 @@ func pickProviderAction(providers []config.ProviderConfig) (string, error) {
 	form := huh.NewForm(huh.NewGroup(
 		huh.NewSelect[string]().
 			Title("Provider 管理").
-			Description("选择要编辑的 provider，或添加新的").
+			Description("选择要操作的 Provider，或添加新的").
 			Options(opts...).
+			Value(&selected),
+	))
+	if err := form.Run(); err != nil {
+		if errors.Is(err, huh.ErrUserAborted) {
+			fmt.Fprintln(os.Stderr, "已取消")
+			os.Exit(0)
+		}
+		return "", err
+	}
+	return selected, nil
+}
+
+// pickProviderItemAction 弹出 Provider 二级操作菜单
+func pickProviderItemAction(name string) (string, error) {
+	var selected string
+	form := huh.NewForm(huh.NewGroup(
+		huh.NewSelect[string]().
+			Title(fmt.Sprintf("Provider: %s", name)).
+			Options(
+				huh.NewOption("编辑", "__edit__"),
+				huh.NewOption("删除", "__delete__"),
+				huh.NewOption("← 返回", "__back__"),
+			).
 			Value(&selected),
 	))
 	if err := form.Run(); err != nil {
