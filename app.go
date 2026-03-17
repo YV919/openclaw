@@ -542,8 +542,101 @@ func (a *App) runStep3SubAgent(
 	return nil
 }
 
-// ── Step 4: 命名 Agent（可选） ─────────────────────────────────────────────
+// pickNamedAgentAction 命名 Agent 一级选单
+func pickNamedAgentAction(agents []config.NamedAgentConfig) (string, error) {
+	var opts []huh.Option[string]
+	for _, na := range agents {
+		modelLabel := na.Model.Primary
+		if modelLabel == "" {
+			modelLabel = "同主 Agent"
+		}
+		label := fmt.Sprintf("%s  (%s)", na.ID, modelLabel)
+		opts = append(opts, huh.NewOption(label, na.ID))
+	}
+	opts = append(opts, huh.NewOption("[+ 添加新命名 Agent]", "__add__"))
+	if len(agents) > 0 {
+		opts = append(opts, huh.NewOption("[继续 →]", "__continue__"))
+	}
 
+	var selected string
+	form := huh.NewForm(huh.NewGroup(
+		huh.NewSelect[string]().
+			Title("命名 Agent 管理").
+			Description("为特定 agent id 指定不同模型").
+			Options(opts...).
+			Value(&selected),
+	))
+	if err := form.Run(); err != nil {
+		if errors.Is(err, huh.ErrUserAborted) {
+			fmt.Fprintln(os.Stderr, "已取消")
+			os.Exit(0)
+		}
+		return "", err
+	}
+	return selected, nil
+}
+
+// pickNamedAgentItemAction 命名 Agent 二级操作菜单
+func pickNamedAgentItemAction(id string) (string, error) {
+	var selected string
+	form := huh.NewForm(huh.NewGroup(
+		huh.NewSelect[string]().
+			Title(fmt.Sprintf("命名 Agent: %s", id)).
+			Options(
+				huh.NewOption("编辑", "__edit__"),
+				huh.NewOption("删除", "__delete__"),
+				huh.NewOption("← 返回", "__back__"),
+			).
+			Value(&selected),
+	))
+	if err := form.Run(); err != nil {
+		if errors.Is(err, huh.ErrUserAborted) {
+			fmt.Fprintln(os.Stderr, "已取消")
+			os.Exit(0)
+		}
+		return "", err
+	}
+	return selected, nil
+}
+
+// editNamedAgent 编辑已有命名 Agent（Agent ID 只读）
+// 注：__add__ 分支目前只收集 Primary（与现有行为一致），editNamedAgent 支持 Primary + Fallback。
+func editNamedAgent(
+	agent config.NamedAgentConfig,
+	allOptsWithSame []huh.Option[string],
+	allOptsWithNone []huh.Option[string],
+) (config.NamedAgentConfig, error) {
+	primary := agent.Model.Primary
+	fallback := agent.Model.Fallback
+
+	form := huh.NewForm(huh.NewGroup(
+		huh.NewNote().
+			Title("Agent ID").
+			Description(agent.ID),
+		huh.NewSelect[string]().
+			Title("使用模型 (Primary)").
+			Options(allOptsWithSame...).
+			Value(&primary),
+		huh.NewSelect[string]().
+			Title("备用模型 (Fallback)").
+			Description("可选，留空表示不配置").
+			Options(allOptsWithNone...).
+			Value(&fallback),
+	))
+	if err := form.Run(); err != nil {
+		if errors.Is(err, huh.ErrUserAborted) {
+			fmt.Fprintln(os.Stderr, "已取消")
+			os.Exit(0)
+		}
+		return config.NamedAgentConfig{}, err
+	}
+	return config.NamedAgentConfig{
+		ID:    agent.ID,
+		Model: config.AgentModelConfig{Primary: primary, Fallback: fallback},
+	}, nil
+}
+
+// ── Step 4: 命名 Agent（可选） ─────────────────────────────────────────────
 func (a *App) runStep4NamedAgents(
 	fullCfg *config.FullConfig,
 	allOpts []huh.Option[string],
@@ -553,92 +646,99 @@ func (a *App) runStep4NamedAgents(
 		[]huh.Option[string]{huh.NewOption("同主 Agent", sameAsMain)},
 		allOpts...,
 	)
-
-	var wantConfig bool
-	form0 := huh.NewForm(huh.NewGroup(
-		huh.NewConfirm().
-			Title("是否配置命名 Agent？").
-			Description("为特定 agent id 指定不同模型（可跳过）").
-			Value(&wantConfig),
-	))
-	if err := form0.Run(); err != nil {
-		if errors.Is(err, huh.ErrUserAborted) {
-			fmt.Fprintln(os.Stderr, "已取消")
-			os.Exit(0)
-		}
-		return err
-	}
-	if !wantConfig {
-		return nil
-	}
+	allOptsWithNone := append(
+		[]huh.Option[string]{huh.NewOption("（不配置）", "")},
+		allOpts...,
+	)
 
 	for {
-		agentID := ""
-		modelPrimary := ""
-		if len(allOpts) > 0 {
-			modelPrimary = allOpts[0].Value
-		}
-
-		form := huh.NewForm(huh.NewGroup(
-			huh.NewInput().
-				Title("Agent ID").
-				Placeholder("my-coder").
-				Validate(func(s string) error {
-					if strings.TrimSpace(s) == "" {
-						return fmt.Errorf("Agent ID 不能为空")
-					}
-					return nil
-				}).
-				Value(&agentID),
-			huh.NewSelect[string]().
-				Title("使用模型").
-				Options(allOptsWithSame...).
-				Value(&modelPrimary),
-		))
-		if err := form.Run(); err != nil {
-			if errors.Is(err, huh.ErrUserAborted) {
-				fmt.Fprintln(os.Stderr, "已取消")
-				os.Exit(0)
-			}
+		action, err := pickNamedAgentAction(fullCfg.NamedAgents)
+		if err != nil {
 			return err
 		}
 
-		id := strings.TrimSpace(agentID)
-		upserted := false
-		for i, na := range fullCfg.NamedAgents {
-			if na.ID == id {
-				fullCfg.NamedAgents[i] = config.NamedAgentConfig{
+		switch action {
+		case "__continue__":
+			return nil
+
+		case "__add__":
+			agentID := ""
+			modelPrimary := ""
+			if len(allOpts) > 0 {
+				modelPrimary = allOpts[0].Value
+			}
+			form := huh.NewForm(huh.NewGroup(
+				huh.NewInput().
+					Title("Agent ID").
+					Placeholder("my-coder").
+					Validate(func(s string) error {
+						if strings.TrimSpace(s) == "" {
+							return fmt.Errorf("Agent ID 不能为空")
+						}
+						return nil
+					}).
+					Value(&agentID),
+				huh.NewSelect[string]().
+					Title("使用模型").
+					Options(allOptsWithSame...).
+					Value(&modelPrimary),
+			))
+			if err := form.Run(); err != nil {
+				if errors.Is(err, huh.ErrUserAborted) {
+					fmt.Fprintln(os.Stderr, "已取消")
+					os.Exit(0)
+				}
+				return err
+			}
+			id := strings.TrimSpace(agentID)
+			upserted := false
+			for i, na := range fullCfg.NamedAgents {
+				if na.ID == id {
+					fullCfg.NamedAgents[i] = config.NamedAgentConfig{
+						ID:    id,
+						Model: config.AgentModelConfig{Primary: modelPrimary},
+					}
+					upserted = true
+					break
+				}
+			}
+			if !upserted {
+				fullCfg.NamedAgents = append(fullCfg.NamedAgents, config.NamedAgentConfig{
 					ID:    id,
 					Model: config.AgentModelConfig{Primary: modelPrimary},
-				}
-				upserted = true
-				break
+				})
 			}
-		}
-		if !upserted {
-			fullCfg.NamedAgents = append(fullCfg.NamedAgents, config.NamedAgentConfig{
-				ID:    id,
-				Model: config.AgentModelConfig{Primary: modelPrimary},
-			})
-		}
 
-		var continueAdding bool
-		formContinue := huh.NewForm(huh.NewGroup(
-			huh.NewConfirm().
-				Title("是否继续添加命名 Agent？").
-				Value(&continueAdding),
-		))
-		if err := formContinue.Run(); err != nil {
-			if errors.Is(err, huh.ErrUserAborted) {
-				break
+		default:
+			// 选中已有 Agent → 二级菜单
+			subAction, err := pickNamedAgentItemAction(action)
+			if err != nil {
+				return err
 			}
-			return err
-		}
-		if !continueAdding {
-			break
+			switch subAction {
+			case "__edit__":
+				for i, na := range fullCfg.NamedAgents {
+					if na.ID == action {
+						updated, err := editNamedAgent(na, allOptsWithSame, allOptsWithNone)
+						if err != nil {
+							return err
+						}
+						fullCfg.NamedAgents[i] = updated
+						break
+					}
+				}
+			case "__delete__":
+				newAgents := make([]config.NamedAgentConfig, 0, len(fullCfg.NamedAgents))
+				for _, na := range fullCfg.NamedAgents {
+					if na.ID != action {
+						newAgents = append(newAgents, na)
+					}
+				}
+				fullCfg.NamedAgents = newAgents
+			}
+			// "__back__" 继续外层 for
 		}
 	}
-	return nil
 }
 
 // ── 输出 ──────────────────────────────────────────────────────────────────
