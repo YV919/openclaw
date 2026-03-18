@@ -503,7 +503,7 @@ func (a *App) runStep3SubAgent(
 	fullCfg *config.FullConfig,
 	allOpts []huh.Option[string],
 	allOptsWithNone []huh.Option[string],
-) error {
+) (bool, error) {
 	const sameAsMain = "__same__"
 	subChoice := sameAsMain
 	if fullCfg.SubAgent.Primary != "" {
@@ -516,6 +516,7 @@ func (a *App) runStep3SubAgent(
 			Options(
 				huh.NewOption("同主 Agent（不单独配置）", sameAsMain),
 				huh.NewOption("单独指定", "__custom__"),
+				huh.NewOption("← 返回上一步", "__back__"),
 			).
 			Value(&subChoice),
 	))
@@ -524,12 +525,14 @@ func (a *App) runStep3SubAgent(
 			fmt.Fprintln(os.Stderr, "已取消")
 			os.Exit(0)
 		}
-		return err
+		return false, err
 	}
-
+	if subChoice == "__back__" {
+		return true, nil
+	}
 	if subChoice == sameAsMain {
 		fullCfg.SubAgent = config.AgentModelConfig{}
-		return nil
+		return false, nil
 	}
 
 	// 单独指定
@@ -560,10 +563,10 @@ func (a *App) runStep3SubAgent(
 			fmt.Fprintln(os.Stderr, "已取消")
 			os.Exit(0)
 		}
-		return err
+		return false, err
 	}
 	fullCfg.SubAgent = config.AgentModelConfig{Primary: primary, Fallback: fallback}
-	return nil
+	return false, nil
 }
 
 // pickNamedAgentAction 命名 Agent 一级选单
