@@ -73,7 +73,7 @@ func (a *App) Run() error {
 		var err error
 		switch step {
 		case 1:
-			err = a.runStep1Providers(fullCfg)
+			err = a.runStep1Providers(fullCfg) // Step 1 是首步，无需返回上一步
 		case 2:
 			back, err = a.runStep2MainAgent(fullCfg, allModelOpts, allModelOptsWithNone)
 		case 3:
@@ -320,6 +320,7 @@ func chineseKeyMap() *huh.KeyMap {
 	km.Confirm.Next = key.NewBinding(key.WithKeys("enter", "tab"), key.WithHelp("enter", "确认"))
 	km.Confirm.Prev = key.NewBinding(key.WithKeys("shift+tab"),    key.WithHelp("shift+tab", "上一项"))
 	km.Note.Next    = key.NewBinding(key.WithKeys("enter"),        key.WithHelp("enter", "继续"))
+	km.Note.Prev    = key.NewBinding(key.WithKeys("shift+tab"),    key.WithHelp("shift+tab", "返回"))
 	return km
 }
 
