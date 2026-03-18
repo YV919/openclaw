@@ -289,7 +289,7 @@ func pickProviderItemAction(name string) (string, error) {
 	return selected, nil
 }
 
-// chineseKeyMap 返回带中文说明的 KeyMap，仅覆盖 MultiSelect 和 Select 的提示文字
+// chineseKeyMap 返回带中文说明的 KeyMap，覆盖所有字段类型（Input/Confirm/Note/Select/MultiSelect）的导航提示
 func chineseKeyMap() *huh.KeyMap {
 	km := huh.NewDefaultKeyMap()
 	km.MultiSelect.Toggle = key.NewBinding(key.WithKeys(" ", "x"), key.WithHelp("x", "切换选中"))
