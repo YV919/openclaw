@@ -469,7 +469,7 @@ func (a *App) runStep2MainAgent(
 		primary = allOpts[0].Value
 	}
 
-	optsWithBack := append(allOpts, huh.NewOption("← 返回上一步", "__back__"))
+	optsWithBack := append(append([]huh.Option[string](nil), allOpts...), huh.NewOption("← 返回上一步", "__back__"))
 
 	form := newForm(huh.NewGroup(
 		huh.NewSelect[string]().
