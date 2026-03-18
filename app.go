@@ -456,7 +456,7 @@ func (a *App) runStep2MainAgent(
 	fullCfg *config.FullConfig,
 	allOpts []huh.Option[string],
 	allOptsWithNone []huh.Option[string],
-) error {
+) (bool, error) {
 	primary := fullCfg.MainAgent.Primary
 	fallback := fullCfg.MainAgent.Fallback
 	if !containsOptValue(allOpts, primary) {
@@ -469,11 +469,13 @@ func (a *App) runStep2MainAgent(
 		primary = allOpts[0].Value
 	}
 
+	optsWithBack := append(allOpts, huh.NewOption("← 返回上一步", "__back__"))
+
 	form := newForm(huh.NewGroup(
 		huh.NewSelect[string]().
 			Title("主 Agent 模型 (Primary)").
 			Description("agents.defaults.model.primary").
-			Options(allOpts...).
+			Options(optsWithBack...).
 			Value(&primary),
 		huh.NewSelect[string]().
 			Title("主 Agent 备用模型 (Fallback)").
@@ -486,10 +488,13 @@ func (a *App) runStep2MainAgent(
 			fmt.Fprintln(os.Stderr, "已取消")
 			os.Exit(0)
 		}
-		return err
+		return false, err
+	}
+	if primary == "__back__" {
+		return true, nil
 	}
 	fullCfg.MainAgent = config.AgentModelConfig{Primary: primary, Fallback: fallback}
-	return nil
+	return false, nil
 }
 
 // ── Step 3: 子 Agent 模型 ──────────────────────────────────────────────────
