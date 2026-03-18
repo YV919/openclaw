@@ -421,7 +421,7 @@ func editProvider(p config.ProviderConfig) (config.ProviderConfig, bool, error) 
 	form := newForm(huh.NewGroup(
 		huh.NewInput().
 			Title("Provider 标识名").
-			Description("唯一英文 ID，只含小写字母、数字和连字符，用于区分不同服务商（如 dmxapi-cn、dmxapi-ssvip）\n· shift+tab 返回上一字段  · Ctrl+C 取消编辑").
+			Description("唯一英文 ID，只含小写字母、数字和连字符，用于区分不同服务商（如 dmxapi-cn、dmxapi-ssvip）").
 			Placeholder("my-proxy").
 			Validate(func(s string) error {
 				s = strings.TrimSpace(s)
