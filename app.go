@@ -170,7 +170,7 @@ func deleteProvider(fullCfg *config.FullConfig, name string) error {
 			Description("删除后相关 NamedAgent 的模型引用将被清空，主/子 Agent 的引用将在下一步重新选择。").
 			Value(&confirmed),
 	))
-	if err := form.Run(); err != nil {
+	if err := runForm(form); err != nil {
 		if errors.Is(err, huh.ErrUserAborted) {
 			return nil
 		}
@@ -271,7 +271,7 @@ func pickProviderAction(providers []config.ProviderConfig) (string, error) {
 			Options(opts...).
 			Value(&selected),
 	))
-	if err := form.Run(); err != nil {
+	if err := runForm(form); err != nil {
 		if errors.Is(err, huh.ErrUserAborted) {
 			fmt.Fprintln(os.Stderr, "已取消")
 			os.Exit(0)
@@ -294,7 +294,7 @@ func pickProviderItemAction(name string) (string, error) {
 			).
 			Value(&selected),
 	))
-	if err := form.Run(); err != nil {
+	if err := runForm(form); err != nil {
 		if errors.Is(err, huh.ErrUserAborted) {
 			fmt.Fprintln(os.Stderr, "已取消")
 			os.Exit(0)
@@ -480,7 +480,7 @@ func editProvider(p config.ProviderConfig) (config.ProviderConfig, bool, error) 
 			Value(&customModel),
 	))
 
-	if err := form.Run(); err != nil {
+	if err := runForm(form); err != nil {
 		if errors.Is(err, huh.ErrUserAborted) {
 			return config.ProviderConfig{}, true, nil
 		}
@@ -548,7 +548,7 @@ func (a *App) runStep2MainAgent(
 			Options(allOptsWithNone...).
 			Value(&fallback),
 	))
-	if err := form.Run(); err != nil {
+	if err := runForm(form); err != nil {
 		if errors.Is(err, huh.ErrUserAborted) {
 			fmt.Fprintln(os.Stderr, "已取消")
 			os.Exit(0)
@@ -585,7 +585,7 @@ func (a *App) runStep3SubAgent(
 			).
 			Value(&subChoice),
 	))
-	if err := form1.Run(); err != nil {
+	if err := runForm(form1); err != nil {
 		if errors.Is(err, huh.ErrUserAborted) {
 			fmt.Fprintln(os.Stderr, "已取消")
 			os.Exit(0)
@@ -623,7 +623,7 @@ func (a *App) runStep3SubAgent(
 			Options(allOptsWithNone...).
 			Value(&fallback),
 	))
-	if err := form2.Run(); err != nil {
+	if err := runForm(form2); err != nil {
 		if errors.Is(err, huh.ErrUserAborted) {
 			fmt.Fprintln(os.Stderr, "已取消")
 			os.Exit(0)
@@ -656,7 +656,7 @@ func pickNamedAgentAction(agents []config.NamedAgentConfig) (string, error) {
 			Options(opts...).
 			Value(&selected),
 	))
-	if err := form.Run(); err != nil {
+	if err := runForm(form); err != nil {
 		if errors.Is(err, huh.ErrUserAborted) {
 			fmt.Fprintln(os.Stderr, "已取消")
 			os.Exit(0)
@@ -679,7 +679,7 @@ func pickNamedAgentItemAction(id string) (string, error) {
 			).
 			Value(&selected),
 	))
-	if err := form.Run(); err != nil {
+	if err := runForm(form); err != nil {
 		if errors.Is(err, huh.ErrUserAborted) {
 			fmt.Fprintln(os.Stderr, "已取消")
 			os.Exit(0)
@@ -713,7 +713,7 @@ func editNamedAgent(
 			Options(allOptsWithNone...).
 			Value(&fallback),
 	))
-	if err := form.Run(); err != nil {
+	if err := runForm(form); err != nil {
 		if errors.Is(err, huh.ErrUserAborted) {
 			return config.NamedAgentConfig{}, true, nil
 		}
@@ -815,13 +815,14 @@ func printSuccess(cfg *config.FullConfig) {
 	fmt.Println()
 	fmt.Println(box)
 
-	newForm(huh.NewGroup( //nolint:errcheck
+	f := newForm(huh.NewGroup(
 		huh.NewNote().
 			Title("提示").
 			Description("✓ 配置已保存，下次请求时自动生效（支持热切换，无需重启网关）。").
 			Next(true).
 			NextLabel("按 Enter 退出"),
-	)).Run() //nolint:errcheck
+	))
+	runForm(f) //nolint:errcheck
 }
 
 func printBanner() {
