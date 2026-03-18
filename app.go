@@ -213,11 +213,13 @@ func (a *App) runStep1Providers(fullCfg *config.FullConfig) error {
 			break
 		}
 		if action == "__add__" {
-			p, err := editProvider(config.ProviderConfig{})
+			p, cancelled, err := editProvider(config.ProviderConfig{})
 			if err != nil {
 				return err
 			}
-			fullCfg.Providers = append(fullCfg.Providers, p)
+			if !cancelled {
+				fullCfg.Providers = append(fullCfg.Providers, p)
+			}
 		} else {
 			// 选中已有 provider → 弹二级菜单
 			subAction, err := pickProviderItemAction(action)
@@ -228,11 +230,13 @@ func (a *App) runStep1Providers(fullCfg *config.FullConfig) error {
 			case "__edit__":
 				for i, p := range fullCfg.Providers {
 					if p.Name == action {
-						updated, err := editProvider(p)
+						updated, cancelled, err := editProvider(p)
 						if err != nil {
 							return err
 						}
-						fullCfg.Providers[i] = updated
+						if !cancelled {
+							fullCfg.Providers[i] = updated
+						}
 						break
 					}
 				}
@@ -334,7 +338,7 @@ func newForm(groups ...*huh.Group) *huh.Form {
 	return huh.NewForm(groups...).WithKeyMap(chineseKeyMap())
 }
 
-func editProvider(p config.ProviderConfig) (config.ProviderConfig, error) {
+func editProvider(p config.ProviderConfig) (config.ProviderConfig, bool, error) {
 	name := p.Name
 	// 格式感知的展示剥离：仅对自动补全 /v1 的格式剥除，google-generative-ai 原样
 	baseUrl := p.BaseUrl
@@ -371,7 +375,7 @@ func editProvider(p config.ProviderConfig) (config.ProviderConfig, error) {
 	form := newForm(huh.NewGroup(
 		huh.NewInput().
 			Title("Provider 标识名").
-			Description("唯一英文 ID，只含小写字母、数字和连字符，用于区分不同服务商（如 dmxapi-cn、dmxapi-ssvip）").
+			Description("唯一英文 ID，只含小写字母、数字和连字符，用于区分不同服务商（如 dmxapi-cn、dmxapi-ssvip）\n· shift+tab 返回上一字段  · Ctrl+C 取消编辑").
 			Placeholder("my-proxy").
 			Validate(func(s string) error {
 				s = strings.TrimSpace(s)
@@ -432,10 +436,9 @@ func editProvider(p config.ProviderConfig) (config.ProviderConfig, error) {
 
 	if err := form.Run(); err != nil {
 		if errors.Is(err, huh.ErrUserAborted) {
-			fmt.Fprintln(os.Stderr, "已取消")
-			os.Exit(0)
+			return config.ProviderConfig{}, true, nil
 		}
-		return config.ProviderConfig{}, err
+		return config.ProviderConfig{}, false, err
 	}
 
 	// 整理模型列表
@@ -450,7 +453,7 @@ func editProvider(p config.ProviderConfig) (config.ProviderConfig, error) {
 	}
 	// 若没有任何选择，返回错误
 	if len(finalModels) == 0 {
-		return config.ProviderConfig{}, fmt.Errorf("provider %q 的模型列表不能为空", name)
+		return config.ProviderConfig{}, false, fmt.Errorf("provider %q 的模型列表不能为空", name)
 	}
 
 	// 先确定 apiFormat，再规范化 URL（NormalizeBaseURL 依赖 apiFormat）
@@ -463,7 +466,7 @@ func editProvider(p config.ProviderConfig) (config.ProviderConfig, error) {
 		ApiKey:    strings.TrimSpace(apiKey),
 		Models:    finalModels,
 		ApiFormat: apiFormat,
-	}, nil
+	}, false, nil
 }
 
 // ── Step 2: 主 Agent 模型 ──────────────────────────────────────────────────
