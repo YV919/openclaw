@@ -580,6 +580,7 @@ func pickNamedAgentAction(agents []config.NamedAgentConfig) (string, error) {
 		label := fmt.Sprintf("%s  (%s)", na.ID, modelLabel)
 		opts = append(opts, huh.NewOption(label, na.ID))
 	}
+	opts = append(opts, huh.NewOption("← 返回上一步", "__back__"))
 	opts = append(opts, huh.NewOption("[继续 →]", "__continue__"))
 
 	var selected string
@@ -663,7 +664,7 @@ func editNamedAgent(
 func (a *App) runStep4NamedAgents(
 	fullCfg *config.FullConfig,
 	allOpts []huh.Option[string],
-) error {
+) (bool, error) {
 	const sameAsMain = ""
 	allOptsWithSame := append(
 		[]huh.Option[string]{huh.NewOption("同主 Agent", sameAsMain)},
@@ -677,18 +678,19 @@ func (a *App) runStep4NamedAgents(
 	for {
 		action, err := pickNamedAgentAction(fullCfg.NamedAgents)
 		if err != nil {
-			return err
+			return false, err
 		}
 
 		switch action {
+		case "__back__":
+			return true, nil
 		case "__continue__":
-			return nil
-
+			return false, nil
 		default:
 			// 选中已有 Agent → 二级菜单
 			subAction, err := pickNamedAgentItemAction(action)
 			if err != nil {
-				return err
+				return false, err
 			}
 			switch subAction {
 			case "__edit__":
@@ -696,7 +698,7 @@ func (a *App) runStep4NamedAgents(
 					if na.ID == action {
 						updated, err := editNamedAgent(na, allOptsWithSame, allOptsWithNone)
 						if err != nil {
-							return err
+							return false, err
 						}
 						fullCfg.NamedAgents[i] = updated
 						break
