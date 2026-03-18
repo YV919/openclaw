@@ -644,11 +644,12 @@ func pickNamedAgentItemAction(id string) (string, error) {
 }
 
 // editNamedAgent 编辑已有命名 Agent（Agent ID 只读），支持 Primary + Fallback。
+// 返回值：(更新后的 Agent, 是否取消, error)
 func editNamedAgent(
 	agent config.NamedAgentConfig,
 	allOptsWithSame []huh.Option[string],
 	allOptsWithNone []huh.Option[string],
-) (config.NamedAgentConfig, error) {
+) (config.NamedAgentConfig, bool, error) {
 	primary := agent.Model.Primary
 	fallback := agent.Model.Fallback
 
@@ -668,15 +669,14 @@ func editNamedAgent(
 	))
 	if err := form.Run(); err != nil {
 		if errors.Is(err, huh.ErrUserAborted) {
-			fmt.Fprintln(os.Stderr, "已取消")
-			os.Exit(0)
+			return config.NamedAgentConfig{}, true, nil
 		}
-		return config.NamedAgentConfig{}, err
+		return config.NamedAgentConfig{}, false, err
 	}
 	return config.NamedAgentConfig{
 		ID:    agent.ID,
 		Model: config.AgentModelConfig{Primary: primary, Fallback: fallback},
-	}, nil
+	}, false, nil
 }
 
 // ── Step 4: 命名 Agent（可选） ─────────────────────────────────────────────
@@ -715,11 +715,13 @@ func (a *App) runStep4NamedAgents(
 			case "__edit__":
 				for i, na := range fullCfg.NamedAgents {
 					if na.ID == action {
-						updated, err := editNamedAgent(na, allOptsWithSame, allOptsWithNone)
+						updated, cancelled, err := editNamedAgent(na, allOptsWithSame, allOptsWithNone)
 						if err != nil {
 							return false, err
 						}
-						fullCfg.NamedAgents[i] = updated
+						if !cancelled {
+							fullCfg.NamedAgents[i] = updated
+						}
 						break
 					}
 				}
