@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/bubbles/key"
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/huh"
 	"github.com/charmbracelet/lipgloss"
 	"openclaw_config/internal/config"
@@ -333,9 +334,54 @@ func chineseKeyMap() *huh.KeyMap {
 	return km
 }
 
+// helpFooter 是统一显示在所有表单底部的导航提示栏
+var helpFooter = lipgloss.NewStyle().
+	Foreground(lipgloss.Color("241")).
+	Render("  ctrl+c 取消  ·  shift+tab 上一项  ·  enter 确认")
+
+// formModel 将 huh.Form 包裹为 tea.Model，在 View() 底部追加固定帮助栏。
+// 替代 form.Run()，配合 runForm() 使用。
+type formModel struct {
+	form *huh.Form
+}
+
+func (m *formModel) Init() tea.Cmd {
+	return m.form.Init()
+}
+
+func (m *formModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	// huh.Form.Update 返回新的 tea.Model，必须类型断言并回写 m.form，
+	// 否则表单状态永远不会推进。bubbletea 事件循环为单线程，无竞态风险。
+	form, cmd := m.form.Update(msg)
+	m.form = form.(*huh.Form)
+	return m, cmd
+}
+
+func (m *formModel) View() string {
+	v := m.form.View()
+	if v == "" {
+		return "" // form.go:610：quitting 时 View() 确定返回空字符串
+	}
+	return v + "\n" + helpFooter
+}
+
+// runForm 替代 form.Run()，通过 bubbletea 程序展示带固定帮助栏的表单。
+func runForm(form *huh.Form) error {
+	form.WithShowHelp(false)
+	m := &formModel{form: form}
+	result, err := tea.NewProgram(m).Run()
+	if err != nil {
+		return err
+	}
+	if result.(*formModel).form.State == huh.StateAborted {
+		return huh.ErrUserAborted
+	}
+	return nil
+}
+
 // newForm 创建带中文 KeyMap 的 huh.Form（统一入口，避免重复调用 WithKeyMap）
 func newForm(groups ...*huh.Group) *huh.Form {
-	return huh.NewForm(groups...).WithKeyMap(chineseKeyMap())
+	return huh.NewForm(groups...).WithKeyMap(chineseKeyMap()).WithShowHelp(false)
 }
 
 func editProvider(p config.ProviderConfig) (config.ProviderConfig, bool, error) {
