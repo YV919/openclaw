@@ -321,6 +321,11 @@ func chineseKeyMap() *huh.KeyMap {
 	km.Confirm.Prev = key.NewBinding(key.WithKeys("shift+tab"),    key.WithHelp("shift+tab", "上一项"))
 	km.Note.Next    = key.NewBinding(key.WithKeys("enter"),        key.WithHelp("enter", "继续"))
 	km.Note.Prev    = key.NewBinding(key.WithKeys("shift+tab"),    key.WithHelp("shift+tab", "返回"))
+	km.Input.Submit       = key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "提交"))
+	km.Select.Submit      = key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "确认"))
+	km.MultiSelect.Submit = key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "确认"))
+	km.Note.Submit        = key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "继续"))
+	km.Confirm.Submit     = key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "确认"))
 	return km
 }
 
