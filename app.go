@@ -54,31 +54,41 @@ func (a *App) Run() error {
 		fmt.Println()
 	}
 
-	// Step 1: Provider 管理
-	if err := a.runStep1Providers(fullCfg); err != nil {
-		return err
-	}
+	// Step 1-4: 步骤导航循环（支持后退）
+	var allModelOpts []huh.Option[string]
+	var allModelOptsWithNone []huh.Option[string]
 
-	// 构建全部模型选项（供后续步骤使用）
-	allModelOpts := buildAllModelOpts(fullCfg.Providers)
-	allModelOptsWithNone := append(
-		[]huh.Option[string]{huh.NewOption("（不配置）", "")},
-		allModelOpts...,
-	)
+	step := 1
+	for step >= 1 && step <= 4 {
+		// 每次进入 Step 2 前重建模型选项（Step 1 可能修改了 Providers）
+		if step == 2 {
+			allModelOpts = buildAllModelOpts(fullCfg.Providers)
+			allModelOptsWithNone = append(
+				[]huh.Option[string]{huh.NewOption("（不配置）", "")},
+				allModelOpts...,
+			)
+		}
 
-	// Step 2: 主 Agent 模型
-	if err := a.runStep2MainAgent(fullCfg, allModelOpts, allModelOptsWithNone); err != nil {
-		return err
-	}
-
-	// Step 3: 子 Agent 模型
-	if err := a.runStep3SubAgent(fullCfg, allModelOpts, allModelOptsWithNone); err != nil {
-		return err
-	}
-
-	// Step 4: 命名 Agent（可选）
-	if err := a.runStep4NamedAgents(fullCfg, allModelOpts); err != nil {
-		return err
+		var back bool
+		var err error
+		switch step {
+		case 1:
+			err = a.runStep1Providers(fullCfg)
+		case 2:
+			back, err = a.runStep2MainAgent(fullCfg, allModelOpts, allModelOptsWithNone)
+		case 3:
+			back, err = a.runStep3SubAgent(fullCfg, allModelOpts, allModelOptsWithNone)
+		case 4:
+			back, err = a.runStep4NamedAgents(fullCfg, allModelOpts)
+		}
+		if err != nil {
+			return err
+		}
+		if back {
+			step--
+		} else {
+			step++
+		}
 	}
 
 	// 最终写入
