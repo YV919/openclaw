@@ -4,6 +4,7 @@ import (
 	"io"
 	"os"
 	"reflect"
+	"strings"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -155,7 +156,7 @@ func TestProviderModelListThemeUsesAsciiCheckboxPrefixes(t *testing.T) {
 func TestComputeProviderModelListPresentationShowsAllOptionsWhenSpaceAllows(t *testing.T) {
 	got := computeProviderModelListPresentation(12, 4)
 	want := providerModelListPresentation{
-		fieldHeight:      7,
+		fieldHeight:      6,
 		visibleRows:      4,
 		hiddenCount:      0,
 		showOverflowHint: false,
@@ -165,12 +166,12 @@ func TestComputeProviderModelListPresentationShowsAllOptionsWhenSpaceAllows(t *t
 	}
 }
 
-func TestComputeProviderModelListPresentationShowsOverflowWhenSpaceIsTight(t *testing.T) {
+func TestComputeProviderModelListPresentationReservesOverflowHintLine(t *testing.T) {
 	got := computeProviderModelListPresentation(8, 10)
 	want := providerModelListPresentation{
-		fieldHeight:      8,
-		visibleRows:      4,
-		hiddenCount:      6,
+		fieldHeight:      7,
+		visibleRows:      5,
+		hiddenCount:      5,
 		showOverflowHint: true,
 	}
 	if !reflect.DeepEqual(got, want) {
@@ -178,29 +179,141 @@ func TestComputeProviderModelListPresentationShowsOverflowWhenSpaceIsTight(t *te
 	}
 }
 
-func TestProviderModelListDescriptionWithoutOverflowUsesBaseText(t *testing.T) {
-	got := providerModelListDescription(providerModelListPresentation{
+func TestProviderModelListOverflowHintWithOverflowShowsRemainingCount(t *testing.T) {
+	got := providerModelListOverflowHint(providerModelListPresentation{
 		fieldHeight:      7,
+		visibleRows:      5,
+		hiddenCount:      5,
+		showOverflowHint: true,
+	})
+	want := "↓ 更多模型（还有 5 项，继续向下查看）"
+	if got != want {
+		t.Fatalf("overflow hint = %q, want %q", got, want)
+	}
+}
+
+func TestProviderModelListOverflowHintWithoutOverflowReturnsEmpty(t *testing.T) {
+	got := providerModelListOverflowHint(providerModelListPresentation{
+		fieldHeight:      6,
 		visibleRows:      4,
 		hiddenCount:      0,
 		showOverflowHint: false,
 	})
-	want := providerModelListBaseDescription
-	if got != want {
-		t.Fatalf("description = %q, want %q", got, want)
+	if got != "" {
+		t.Fatalf("overflow hint = %q, want empty", got)
 	}
 }
 
-func TestProviderModelListDescriptionWithOverflowAppendsHiddenCount(t *testing.T) {
-	got := providerModelListDescription(providerModelListPresentation{
-		fieldHeight:      8,
-		visibleRows:      4,
-		hiddenCount:      6,
-		showOverflowHint: true,
-	})
-	want := providerModelListBaseDescription + "\n当前仅显示前 4 项，还有 6 项可继续向下查看"
+func TestProviderEditorHelpFooterUsesDefaultTextWhenNotFocused(t *testing.T) {
+	got := providerEditorHelpFooter(false)
+	want := renderHelpFooter(defaultHelpFooterText)
 	if got != want {
-		t.Fatalf("description = %q, want %q", got, want)
+		t.Fatalf("help footer = %q, want %q", got, want)
+	}
+}
+
+func TestProviderEditorHelpFooterUsesExpandedTextWhenModelListFocused(t *testing.T) {
+	got := providerEditorHelpFooter(true)
+	want := renderHelpFooter("ctrl+c 取消  ·  shift+tab 上一项  ·  空格/x 切换选中  ·  ↑↓ 移动  ·  enter 确认")
+	if got != want {
+		t.Fatalf("help footer = %q, want %q", got, want)
+	}
+}
+
+func TestProviderModelListFieldViewAppendsOverflowHintBelowOptions(t *testing.T) {
+	var selected []string
+	field := newProviderModelListField(
+		huh.NewMultiSelect[string]().
+			Title("模型列表").
+			Description(providerModelListBaseDescription).
+			Options(
+				huh.NewOption("a", "a"),
+				huh.NewOption("b", "b"),
+				huh.NewOption("c", "c"),
+				huh.NewOption("d", "d"),
+				huh.NewOption("e", "e"),
+				huh.NewOption("f", "f"),
+				huh.NewOption("g", "g"),
+				huh.NewOption("h", "h"),
+				huh.NewOption("i", "i"),
+				huh.NewOption("j", "j"),
+			).
+			Value(&selected).
+			WithTheme(providerModelListTheme()).(*huh.MultiSelect[string]),
+		func(int) int { return 8 },
+		func() int { return 10 },
+	)
+	field.lastWindowHeight = 8
+
+	got := field.View()
+	want := "↓ 更多模型（还有 5 项，继续向下查看）"
+	if !strings.Contains(got, want) {
+		t.Fatalf("view = %q, want substring %q", got, want)
+	}
+}
+
+func TestProviderModelListFieldFocusStateTracksFocusAndBlur(t *testing.T) {
+	var selected []string
+	field := newProviderModelListField(
+		huh.NewMultiSelect[string]().
+			Title("模型列表").
+			Description(providerModelListBaseDescription).
+			Options(huh.NewOption("a", "a")).
+			Value(&selected).
+			WithTheme(providerModelListTheme()).(*huh.MultiSelect[string]),
+		func(int) int { return 6 },
+		func() int { return 1 },
+	)
+
+	if field.IsFocused() {
+		t.Fatalf("expected unfocused field")
+	}
+	field.Focus()
+	if !field.IsFocused() {
+		t.Fatalf("expected focused field")
+	}
+	field.Blur()
+	if field.IsFocused() {
+		t.Fatalf("expected blurred field")
+	}
+}
+
+func TestProviderEditorHelpFooterSwitchesForFocusedModelList(t *testing.T) {
+	defaultFooter := providerEditorHelpFooter(false)
+	focusedFooter := providerEditorHelpFooter(true)
+
+	if !strings.Contains(defaultFooter, "ctrl+c 取消") {
+		t.Fatalf("default footer = %q, want cancel help", defaultFooter)
+	}
+	if strings.Contains(defaultFooter, "空格/x 切换选中") {
+		t.Fatalf("default footer should not include model list help: %q", defaultFooter)
+	}
+	wantFocused := "ctrl+c 取消  ·  shift+tab 上一项  ·  空格/x 切换选中  ·  ↑↓ 移动  ·  enter 确认"
+	if !strings.Contains(focusedFooter, wantFocused) {
+		t.Fatalf("focused footer = %q, want content %q", focusedFooter, wantFocused)
+	}
+}
+
+func TestFormModelViewUsesCustomHelpFooterWhenProvided(t *testing.T) {
+	form := prepareFormForRun(newForm(huh.NewGroup(
+		huh.NewNote().
+			Title("提示").
+			Description("测试表单").
+			Next(true),
+	)))
+	model := &formModel{
+		form: form,
+		helpFooterView: func() string {
+			return "custom footer"
+		},
+	}
+
+	view := model.View()
+	if !strings.Contains(view, "custom footer") {
+		t.Fatalf("View() = %q, want custom footer", view)
+	}
+	if strings.Contains(view, helpFooter) {
+		t.Fatalf("View() should not include default footer when custom footer is provided: %q", view)
 	}
 }
 

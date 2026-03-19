@@ -334,15 +334,31 @@ func chineseKeyMap() *huh.KeyMap {
 	return km
 }
 
+func renderHelpFooter(text string) string {
+	return lipgloss.NewStyle().
+		Foreground(lipgloss.Color("241")).
+		Render("  " + text)
+}
+
+const defaultHelpFooterText = "ctrl+c 取消  ·  shift+tab 上一项  ·  enter 确认"
+
+const providerModelListFocusedHelpFooterText = "ctrl+c 取消  ·  shift+tab 上一项  ·  空格/x 切换选中  ·  ↑↓ 移动  ·  enter 确认"
+
+func providerEditorHelpFooter(modelListFocused bool) string {
+	if modelListFocused {
+		return renderHelpFooter(providerModelListFocusedHelpFooterText)
+	}
+	return renderHelpFooter(defaultHelpFooterText)
+}
+
 // helpFooter 是统一显示在所有表单底部的导航提示栏
-var helpFooter = lipgloss.NewStyle().
-	Foreground(lipgloss.Color("241")).
-	Render("  ctrl+c 取消  ·  shift+tab 上一项  ·  enter 确认")
+var helpFooter = renderHelpFooter(defaultHelpFooterText)
 
 // formModel 将 huh.Form 包裹为 tea.Model，在 View() 底部追加固定帮助栏。
 // 替代 form.Run()，配合 runForm() 使用。
 type formModel struct {
-	form *huh.Form
+	form           *huh.Form
+	helpFooterView func() string
 }
 
 func (m *formModel) Init() tea.Cmd {
@@ -362,6 +378,11 @@ func (m *formModel) View() string {
 	if v == "" {
 		return "" // form.go:610：quitting 时 View() 确定返回空字符串
 	}
+	if m.helpFooterView != nil {
+		if footer := m.helpFooterView(); footer != "" {
+			return v + "\n" + footer
+		}
+	}
 	return v + "\n" + helpFooter
 }
 
@@ -374,8 +395,12 @@ func prepareFormForRun(form *huh.Form) *huh.Form {
 
 // runForm 替代 form.Run()，通过 bubbletea 程序展示带固定帮助栏的表单。
 func runForm(form *huh.Form) error {
+	return runFormWithFooter(form, nil)
+}
+
+func runFormWithFooter(form *huh.Form, helpFooterView func() string) error {
 	form = prepareFormForRun(form)
-	m := &formModel{form: form}
+	m := &formModel{form: form, helpFooterView: helpFooterView}
 	result, err := tea.NewProgram(m).Run()
 	if err != nil {
 		return err
@@ -471,11 +496,11 @@ func providerModelListTheme() *huh.Theme {
 	return theme
 }
 
-const providerModelListBaseDescription = "空格/x 切换选中，↑↓ 移动，enter 确认\n选择此 provider 支持的预设模型；如需自定义模型，请在下方输入框填写，可一次填写多个"
+const providerModelListBaseDescription = "选择此 provider 支持的预设模型；如需自定义模型，请在下方输入框填写，可一次填写多个"
 
 const (
 	providerModelListTitleLines           = 1
-	providerModelListBaseDescriptionLines = 2
+	providerModelListBaseDescriptionLines = 1
 	providerModelListOverflowLines        = 1
 )
 
@@ -490,7 +515,7 @@ func computeProviderModelListPresentation(availableFieldHeight int, optionCount 
 	minFieldHeight := providerModelListTitleLines + providerModelListBaseDescriptionLines + providerModelListOverflowLines + 1
 	if optionCount <= 0 {
 		return providerModelListPresentation{
-			fieldHeight:      minFieldHeight,
+			fieldHeight:      minFieldHeight - providerModelListOverflowLines,
 			visibleRows:      1,
 			hiddenCount:      0,
 			showOverflowHint: false,
@@ -507,21 +532,21 @@ func computeProviderModelListPresentation(availableFieldHeight int, optionCount 
 		}
 	}
 
-	fieldHeight := max(minFieldHeight, availableFieldHeight)
-	visibleRows := max(1, fieldHeight-providerModelListTitleLines-providerModelListBaseDescriptionLines-providerModelListOverflowLines)
+	budgetWithHint := max(minFieldHeight, availableFieldHeight)
+	visibleRows := max(1, budgetWithHint-providerModelListTitleLines-providerModelListBaseDescriptionLines-providerModelListOverflowLines)
 	return providerModelListPresentation{
-		fieldHeight:      fieldHeight,
+		fieldHeight:      providerModelListTitleLines + providerModelListBaseDescriptionLines + visibleRows,
 		visibleRows:      visibleRows,
 		hiddenCount:      max(0, optionCount-visibleRows),
 		showOverflowHint: true,
 	}
 }
 
-func providerModelListDescription(p providerModelListPresentation) string {
+func providerModelListOverflowHint(p providerModelListPresentation) string {
 	if !p.showOverflowHint || p.hiddenCount <= 0 {
-		return providerModelListBaseDescription
+		return ""
 	}
-	return providerModelListBaseDescription + fmt.Sprintf("\n当前仅显示前 %d 项，还有 %d 项可继续向下查看", p.visibleRows, p.hiddenCount)
+	return fmt.Sprintf("↓ 更多模型（还有 %d 项，继续向下查看）", p.hiddenCount)
 }
 
 const providerFieldGapLines = 2
@@ -543,6 +568,7 @@ type providerModelListField struct {
 	optionCount      func() int
 	lastWindowHeight int
 	presentation     providerModelListPresentation
+	focused          bool
 }
 
 func newProviderModelListField(
@@ -560,8 +586,11 @@ func newProviderModelListField(
 func (f *providerModelListField) syncPresentation(windowHeight int) {
 	available := f.measureAvailable(windowHeight)
 	presentation := computeProviderModelListPresentation(available, f.optionCount())
+	if presentation == f.presentation {
+		return
+	}
 	f.presentation = presentation
-	f.field.Description(providerModelListDescription(presentation))
+	f.field.Description(providerModelListBaseDescription)
 	f.field.Height(presentation.fieldHeight)
 }
 
@@ -583,15 +612,28 @@ func (f *providerModelListField) View() string {
 	if f.lastWindowHeight > 0 {
 		f.syncPresentation(f.lastWindowHeight)
 	}
-	return f.field.View()
+	view := f.field.View()
+	if hint := providerModelListOverflowHint(f.presentation); hint != "" {
+		return view + "\n" + hint
+	}
+	return view
 }
 
-func (f *providerModelListField) Blur() tea.Cmd { return f.field.Blur() }
-func (f *providerModelListField) Focus() tea.Cmd { return f.field.Focus() }
-func (f *providerModelListField) Error() error { return f.field.Error() }
-func (f *providerModelListField) Run() error { return f.field.Run() }
-func (f *providerModelListField) Skip() bool { return f.field.Skip() }
-func (f *providerModelListField) Zoom() bool { return f.field.Zoom() }
+func (f *providerModelListField) Blur() tea.Cmd {
+	f.focused = false
+	return f.field.Blur()
+}
+
+func (f *providerModelListField) Focus() tea.Cmd {
+	f.focused = true
+	return f.field.Focus()
+}
+
+func (f *providerModelListField) IsFocused() bool { return f.focused }
+func (f *providerModelListField) Error() error    { return f.field.Error() }
+func (f *providerModelListField) Run() error      { return f.field.Run() }
+func (f *providerModelListField) Skip() bool      { return f.field.Skip() }
+func (f *providerModelListField) Zoom() bool      { return f.field.Zoom() }
 func (f *providerModelListField) KeyBinds() []key.Binding { return f.field.KeyBinds() }
 
 func (f *providerModelListField) WithTheme(theme *huh.Theme) huh.Field {
@@ -625,7 +667,7 @@ func (f *providerModelListField) WithPosition(position huh.FieldPosition) huh.Fi
 }
 
 func (f *providerModelListField) GetKey() string { return f.field.GetKey() }
-func (f *providerModelListField) GetValue() any { return f.field.GetValue() }
+func (f *providerModelListField) GetValue() any  { return f.field.GetValue() }
 
 func parseCustomModelInput(input string) []string {
 	normalized := strings.NewReplacer(
@@ -710,13 +752,13 @@ func (f *providerCustomModelInput) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return f, cmd
 }
 
-func (f *providerCustomModelInput) View() string { return f.input.View() }
-func (f *providerCustomModelInput) Blur() tea.Cmd { return f.input.Blur() }
-func (f *providerCustomModelInput) Focus() tea.Cmd { return f.input.Focus() }
-func (f *providerCustomModelInput) Error() error { return f.input.Error() }
-func (f *providerCustomModelInput) Run() error { return f.input.Run() }
-func (f *providerCustomModelInput) Skip() bool { return f.input.Skip() }
-func (f *providerCustomModelInput) Zoom() bool { return f.input.Zoom() }
+func (f *providerCustomModelInput) View() string            { return f.input.View() }
+func (f *providerCustomModelInput) Blur() tea.Cmd           { return f.input.Blur() }
+func (f *providerCustomModelInput) Focus() tea.Cmd          { return f.input.Focus() }
+func (f *providerCustomModelInput) Error() error            { return f.input.Error() }
+func (f *providerCustomModelInput) Run() error              { return f.input.Run() }
+func (f *providerCustomModelInput) Skip() bool              { return f.input.Skip() }
+func (f *providerCustomModelInput) Zoom() bool              { return f.input.Zoom() }
 func (f *providerCustomModelInput) KeyBinds() []key.Binding { return f.input.KeyBinds() }
 
 func (f *providerCustomModelInput) WithTheme(theme *huh.Theme) huh.Field {
@@ -751,7 +793,7 @@ func (f *providerCustomModelInput) WithPosition(position huh.FieldPosition) huh.
 }
 
 func (f *providerCustomModelInput) GetKey() string { return f.input.GetKey() }
-func (f *providerCustomModelInput) GetValue() any { return f.input.GetValue() }
+func (f *providerCustomModelInput) GetValue() any  { return f.input.GetValue() }
 
 func appendUniqueStrings(items []string, value string) []string {
 	for _, item := range items {
@@ -878,7 +920,9 @@ func editProvider(p config.ProviderConfig) (config.ProviderConfig, bool, error) 
 		customModelField,
 	))
 
-	if err := runForm(form); err != nil {
+	if err := runFormWithFooter(form, func() string {
+		return providerEditorHelpFooter(modelListField.IsFocused())
+	}); err != nil {
 		if errors.Is(err, huh.ErrUserAborted) {
 			return config.ProviderConfig{}, true, nil
 		}
