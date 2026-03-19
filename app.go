@@ -471,6 +471,162 @@ func providerModelListTheme() *huh.Theme {
 	return theme
 }
 
+const providerModelListBaseDescription = "空格/x 切换选中，↑↓ 移动，enter 确认\n选择此 provider 支持的预设模型；如需自定义模型，请在下方输入框填写，可一次填写多个"
+
+const (
+	providerModelListTitleLines           = 1
+	providerModelListBaseDescriptionLines = 2
+	providerModelListOverflowLines        = 1
+)
+
+type providerModelListPresentation struct {
+	fieldHeight      int
+	visibleRows      int
+	hiddenCount      int
+	showOverflowHint bool
+}
+
+func computeProviderModelListPresentation(availableFieldHeight int, optionCount int) providerModelListPresentation {
+	minFieldHeight := providerModelListTitleLines + providerModelListBaseDescriptionLines + providerModelListOverflowLines + 1
+	if optionCount <= 0 {
+		return providerModelListPresentation{
+			fieldHeight:      minFieldHeight,
+			visibleRows:      1,
+			hiddenCount:      0,
+			showOverflowHint: false,
+		}
+	}
+
+	fullFieldHeight := providerModelListTitleLines + providerModelListBaseDescriptionLines + optionCount
+	if availableFieldHeight >= fullFieldHeight {
+		return providerModelListPresentation{
+			fieldHeight:      fullFieldHeight,
+			visibleRows:      optionCount,
+			hiddenCount:      0,
+			showOverflowHint: false,
+		}
+	}
+
+	fieldHeight := max(minFieldHeight, availableFieldHeight)
+	visibleRows := max(1, fieldHeight-providerModelListTitleLines-providerModelListBaseDescriptionLines-providerModelListOverflowLines)
+	return providerModelListPresentation{
+		fieldHeight:      fieldHeight,
+		visibleRows:      visibleRows,
+		hiddenCount:      max(0, optionCount-visibleRows),
+		showOverflowHint: true,
+	}
+}
+
+func providerModelListDescription(p providerModelListPresentation) string {
+	if !p.showOverflowHint || p.hiddenCount <= 0 {
+		return providerModelListBaseDescription
+	}
+	return providerModelListBaseDescription + fmt.Sprintf("\n当前仅显示前 %d 项，还有 %d 项可继续向下查看", p.visibleRows, p.hiddenCount)
+}
+
+const providerFieldGapLines = 2
+
+func providerModelListAvailableFieldHeight(windowHeight int, otherViews ...string) int {
+	reserved := lipgloss.Height(helpFooter)
+	for _, view := range otherViews {
+		reserved += lipgloss.Height(view)
+	}
+	reserved += len(otherViews) * providerFieldGapLines
+
+	minFieldHeight := providerModelListTitleLines + providerModelListBaseDescriptionLines + providerModelListOverflowLines + 1
+	return max(minFieldHeight, windowHeight-reserved)
+}
+
+type providerModelListField struct {
+	field            *huh.MultiSelect[string]
+	measureAvailable func(int) int
+	optionCount      func() int
+	lastWindowHeight int
+	presentation     providerModelListPresentation
+}
+
+func newProviderModelListField(
+	field *huh.MultiSelect[string],
+	measureAvailable func(int) int,
+	optionCount func() int,
+) *providerModelListField {
+	return &providerModelListField{
+		field:            field,
+		measureAvailable: measureAvailable,
+		optionCount:      optionCount,
+	}
+}
+
+func (f *providerModelListField) syncPresentation(windowHeight int) {
+	available := f.measureAvailable(windowHeight)
+	presentation := computeProviderModelListPresentation(available, f.optionCount())
+	f.presentation = presentation
+	f.field.Description(providerModelListDescription(presentation))
+	f.field.Height(presentation.fieldHeight)
+}
+
+func (f *providerModelListField) Init() tea.Cmd { return f.field.Init() }
+
+func (f *providerModelListField) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if windowMsg, ok := msg.(tea.WindowSizeMsg); ok {
+		f.lastWindowHeight = windowMsg.Height
+	}
+	if f.lastWindowHeight > 0 {
+		f.syncPresentation(f.lastWindowHeight)
+	}
+	m, cmd := f.field.Update(msg)
+	f.field = m.(*huh.MultiSelect[string])
+	return f, cmd
+}
+
+func (f *providerModelListField) View() string {
+	if f.lastWindowHeight > 0 {
+		f.syncPresentation(f.lastWindowHeight)
+	}
+	return f.field.View()
+}
+
+func (f *providerModelListField) Blur() tea.Cmd { return f.field.Blur() }
+func (f *providerModelListField) Focus() tea.Cmd { return f.field.Focus() }
+func (f *providerModelListField) Error() error { return f.field.Error() }
+func (f *providerModelListField) Run() error { return f.field.Run() }
+func (f *providerModelListField) Skip() bool { return f.field.Skip() }
+func (f *providerModelListField) Zoom() bool { return f.field.Zoom() }
+func (f *providerModelListField) KeyBinds() []key.Binding { return f.field.KeyBinds() }
+
+func (f *providerModelListField) WithTheme(theme *huh.Theme) huh.Field {
+	f.field = f.field.WithTheme(theme).(*huh.MultiSelect[string])
+	return f
+}
+
+func (f *providerModelListField) WithAccessible(accessible bool) huh.Field {
+	f.field = f.field.WithAccessible(accessible).(*huh.MultiSelect[string])
+	return f
+}
+
+func (f *providerModelListField) WithKeyMap(k *huh.KeyMap) huh.Field {
+	f.field = f.field.WithKeyMap(k).(*huh.MultiSelect[string])
+	return f
+}
+
+func (f *providerModelListField) WithWidth(width int) huh.Field {
+	f.field = f.field.WithWidth(width).(*huh.MultiSelect[string])
+	return f
+}
+
+func (f *providerModelListField) WithHeight(height int) huh.Field {
+	f.field = f.field.WithHeight(height).(*huh.MultiSelect[string])
+	return f
+}
+
+func (f *providerModelListField) WithPosition(position huh.FieldPosition) huh.Field {
+	f.field = f.field.WithPosition(position).(*huh.MultiSelect[string])
+	return f
+}
+
+func (f *providerModelListField) GetKey() string { return f.field.GetKey() }
+func (f *providerModelListField) GetValue() any { return f.field.GetValue() }
+
 func parseCustomModelInput(input string) []string {
 	normalized := strings.NewReplacer(
 		"；", ",",
@@ -619,6 +775,52 @@ func editProvider(p config.ProviderConfig) (config.ProviderConfig, bool, error) 
 	customModelInput := ""
 	modelOptionsVersion := 0
 
+	nameField := huh.NewInput().
+		Title("Provider 标识名").
+		Description("唯一英文 ID，只含小写字母、数字和连字符，用于区分不同服务商（如 dmxapi-cn、dmxapi-ssvip）").
+		Placeholder("my-proxy").
+		Validate(func(s string) error {
+			s = strings.TrimSpace(s)
+			if s == "" {
+				return fmt.Errorf("name 不能为空")
+			}
+			for _, c := range s {
+				if !((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-') {
+					return fmt.Errorf("只允许小写字母、数字和连字符，当前输入含非法字符: %c", c)
+				}
+			}
+			return nil
+		}).
+		Value(&name)
+
+	baseURLField := huh.NewInput().
+		Title("Base URL").
+		Description("末尾的 /v1 会自动补全，无需手动填写").
+		Placeholder("https://www.dmxapi.cn").
+		Validate(func(s string) error {
+			s = strings.TrimSpace(s)
+			if s == "" {
+				return fmt.Errorf("Base URL 不能为空")
+			}
+			u, err := url.ParseRequestURI(s)
+			if err != nil || u.Scheme == "" {
+				return fmt.Errorf("URL 格式无效（需包含 http:// 或 https://）")
+			}
+			return nil
+		}).
+		Value(&baseUrl)
+
+	apiKeyField := huh.NewInput().
+		Title("API Key").
+		Placeholder("sk-...").
+		Validate(func(s string) error {
+			if strings.TrimSpace(s) == "" {
+				return fmt.Errorf("API Key 不能为空")
+			}
+			return nil
+		}).
+		Value(&apiKey)
+
 	customModelField := newProviderCustomModelInput(
 		&customModelInput,
 		func(raw string) providerCustomRegistration {
@@ -639,53 +841,10 @@ func editProvider(p config.ProviderConfig) (config.ProviderConfig, bool, error) 
 		},
 	)
 
-	form := newForm(huh.NewGroup(
-		huh.NewInput().
-			Title("Provider 标识名").
-			Description("唯一英文 ID，只含小写字母、数字和连字符，用于区分不同服务商（如 dmxapi-cn、dmxapi-ssvip）").
-			Placeholder("my-proxy").
-			Validate(func(s string) error {
-				s = strings.TrimSpace(s)
-				if s == "" {
-					return fmt.Errorf("name 不能为空")
-				}
-				for _, c := range s {
-					if !((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-') {
-						return fmt.Errorf("只允许小写字母、数字和连字符，当前输入含非法字符: %c", c)
-					}
-				}
-				return nil
-			}).
-			Value(&name),
-		huh.NewInput().
-			Title("Base URL").
-			Description("末尾的 /v1 会自动补全，无需手动填写").
-			Placeholder("https://www.dmxapi.cn").
-			Validate(func(s string) error {
-				s = strings.TrimSpace(s)
-				if s == "" {
-					return fmt.Errorf("Base URL 不能为空")
-				}
-				u, err := url.ParseRequestURI(s)
-				if err != nil || u.Scheme == "" {
-					return fmt.Errorf("URL 格式无效（需包含 http:// 或 https://）")
-				}
-				return nil
-			}).
-			Value(&baseUrl),
-		huh.NewInput().
-			Title("API Key").
-			Placeholder("sk-...").
-			Validate(func(s string) error {
-				if strings.TrimSpace(s) == "" {
-					return fmt.Errorf("API Key 不能为空")
-				}
-				return nil
-			}).
-			Value(&apiKey),
+	modelListField := newProviderModelListField(
 		huh.NewMultiSelect[string]().
 			Title("模型列表").
-			Description("空格/x 切换选中，↑↓ 移动，enter 确认\n选择此 provider 支持的预设模型；如需自定义模型，请在下方输入框填写，可一次填写多个").
+			Description(providerModelListBaseDescription).
 			OptionsFunc(func() []huh.Option[string] {
 				return buildProviderModelOptions(selectedModels, customModelRegistry)
 			}, &modelOptionsVersion).
@@ -696,7 +855,26 @@ func editProvider(p config.ProviderConfig) (config.ProviderConfig, bool, error) 
 				return nil
 			}).
 			Value(&selectedModels).
-			WithTheme(providerModelListTheme()),
+			WithTheme(providerModelListTheme()).(*huh.MultiSelect[string]),
+		func(windowHeight int) int {
+			return providerModelListAvailableFieldHeight(
+				windowHeight,
+				nameField.View(),
+				baseURLField.View(),
+				apiKeyField.View(),
+				customModelField.View(),
+			)
+		},
+		func() int {
+			return len(buildProviderModelOptions(selectedModels, customModelRegistry))
+		},
+	)
+
+	form := newForm(huh.NewGroup(
+		nameField,
+		baseURLField,
+		apiKeyField,
+		modelListField,
 		customModelField,
 	))
 

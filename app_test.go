@@ -152,6 +152,58 @@ func TestProviderModelListThemeUsesAsciiCheckboxPrefixes(t *testing.T) {
 	}
 }
 
+func TestComputeProviderModelListPresentationShowsAllOptionsWhenSpaceAllows(t *testing.T) {
+	got := computeProviderModelListPresentation(12, 4)
+	want := providerModelListPresentation{
+		fieldHeight:      7,
+		visibleRows:      4,
+		hiddenCount:      0,
+		showOverflowHint: false,
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("presentation = %+v, want %+v", got, want)
+	}
+}
+
+func TestComputeProviderModelListPresentationShowsOverflowWhenSpaceIsTight(t *testing.T) {
+	got := computeProviderModelListPresentation(8, 10)
+	want := providerModelListPresentation{
+		fieldHeight:      8,
+		visibleRows:      4,
+		hiddenCount:      6,
+		showOverflowHint: true,
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("presentation = %+v, want %+v", got, want)
+	}
+}
+
+func TestProviderModelListDescriptionWithoutOverflowUsesBaseText(t *testing.T) {
+	got := providerModelListDescription(providerModelListPresentation{
+		fieldHeight:      7,
+		visibleRows:      4,
+		hiddenCount:      0,
+		showOverflowHint: false,
+	})
+	want := providerModelListBaseDescription
+	if got != want {
+		t.Fatalf("description = %q, want %q", got, want)
+	}
+}
+
+func TestProviderModelListDescriptionWithOverflowAppendsHiddenCount(t *testing.T) {
+	got := providerModelListDescription(providerModelListPresentation{
+		fieldHeight:      8,
+		visibleRows:      4,
+		hiddenCount:      6,
+		showOverflowHint: true,
+	})
+	want := providerModelListBaseDescription + "\n当前仅显示前 4 项，还有 6 项可继续向下查看"
+	if got != want {
+		t.Fatalf("description = %q, want %q", got, want)
+	}
+}
+
 func TestProviderModelRegisterAddsNewCustomModelsToRegistryAndSelection(t *testing.T) {
 	selected, registry, added := registerProviderCustomModels(
 		[]string{"claude-opus-4-6"},
@@ -263,6 +315,28 @@ func TestProviderCustomInputHandledDuplicateStillClearsValue(t *testing.T) {
 	}
 	if optionsVersion != 0 {
 		t.Fatalf("optionsVersion = %d, want 0", optionsVersion)
+	}
+}
+
+func TestProviderModelListAvailableFieldHeightReservesOtherViewsGapsAndFooter(t *testing.T) {
+	got := providerModelListAvailableFieldHeight(
+		30,
+		"Provider 标识名\n说明\n> demo",
+		"Base URL\n说明\n> https://example.com",
+		"API Key\n> sk-...",
+		"自定义模型名称（可选，多个可用逗号/换行分隔）\n> custom-alpha",
+	)
+
+	if got != 11 {
+		t.Fatalf("available height = %d, want 11", got)
+	}
+}
+
+func TestProviderModelListAvailableFieldHeightClampsToMinimum(t *testing.T) {
+	got := providerModelListAvailableFieldHeight(6, "a", "b", "c", "d")
+	want := providerModelListTitleLines + providerModelListBaseDescriptionLines + providerModelListOverflowLines + 1
+	if got != want {
+		t.Fatalf("available height = %d, want %d", got, want)
 	}
 }
 
