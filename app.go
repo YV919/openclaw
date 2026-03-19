@@ -320,17 +320,17 @@ func chineseKeyMap() *huh.KeyMap {
 	km.Select.Filter = key.NewBinding(key.WithKeys("/"), key.WithHelp("/", "过滤"))
 	km.Select.Prev = key.NewBinding(key.WithKeys("shift+tab"), key.WithHelp("shift+tab", "返回"))
 	km.Select.Next = key.NewBinding(key.WithKeys("enter", "tab"), key.WithHelp("enter", "确认"))
-	km.Input.Next   = key.NewBinding(key.WithKeys("enter", "tab"), key.WithHelp("enter", "下一项"))
-	km.Input.Prev   = key.NewBinding(key.WithKeys("shift+tab"),    key.WithHelp("shift+tab", "上一项"))
+	km.Input.Next = key.NewBinding(key.WithKeys("enter", "tab"), key.WithHelp("enter", "下一项"))
+	km.Input.Prev = key.NewBinding(key.WithKeys("shift+tab"), key.WithHelp("shift+tab", "上一项"))
 	km.Confirm.Next = key.NewBinding(key.WithKeys("enter", "tab"), key.WithHelp("enter", "确认"))
-	km.Confirm.Prev = key.NewBinding(key.WithKeys("shift+tab"),    key.WithHelp("shift+tab", "上一项"))
-	km.Note.Next    = key.NewBinding(key.WithKeys("enter"),        key.WithHelp("enter", "继续"))
-	km.Note.Prev    = key.NewBinding(key.WithKeys("shift+tab"),    key.WithHelp("shift+tab", "返回"))
-	km.Input.Submit       = key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "提交"))
-	km.Select.Submit      = key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "确认"))
+	km.Confirm.Prev = key.NewBinding(key.WithKeys("shift+tab"), key.WithHelp("shift+tab", "上一项"))
+	km.Note.Next = key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "继续"))
+	km.Note.Prev = key.NewBinding(key.WithKeys("shift+tab"), key.WithHelp("shift+tab", "返回"))
+	km.Input.Submit = key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "提交"))
+	km.Select.Submit = key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "确认"))
 	km.MultiSelect.Submit = key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "确认"))
-	km.Note.Submit        = key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "继续"))
-	km.Confirm.Submit     = key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "确认"))
+	km.Note.Submit = key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "继续"))
+	km.Confirm.Submit = key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "确认"))
 	return km
 }
 
@@ -365,9 +365,16 @@ func (m *formModel) View() string {
 	return v + "\n" + helpFooter
 }
 
+func prepareFormForRun(form *huh.Form) *huh.Form {
+	form.WithShowHelp(false)
+	form.SubmitCmd = tea.Quit
+	form.CancelCmd = tea.Quit
+	return form
+}
+
 // runForm 替代 form.Run()，通过 bubbletea 程序展示带固定帮助栏的表单。
 func runForm(form *huh.Form) error {
-	form.WithShowHelp(false)
+	form = prepareFormForRun(form)
 	m := &formModel{form: form}
 	result, err := tea.NewProgram(m).Run()
 	if err != nil {
@@ -384,6 +391,221 @@ func newForm(groups ...*huh.Group) *huh.Form {
 	return huh.NewForm(groups...).WithKeyMap(chineseKeyMap()).WithShowHelp(false)
 }
 
+func presetModelSet() map[string]bool {
+	set := make(map[string]bool, len(models.PresetModels))
+	for _, m := range models.PresetModels {
+		set[m] = true
+	}
+	return set
+}
+
+func splitProviderModelsForEdit(providerModels []string) ([]string, []string) {
+	presetSet := presetModelSet()
+	selectedModels := make([]string, 0, len(providerModels))
+	customModels := make([]string, 0, len(providerModels))
+
+	for _, modelID := range providerModels {
+		trimmed := strings.TrimSpace(modelID)
+		if trimmed == "" {
+			continue
+		}
+		selectedModels = appendUniqueStrings(selectedModels, trimmed)
+		if presetSet[trimmed] {
+			continue
+		}
+		customModels = appendUniqueStrings(customModels, trimmed)
+	}
+
+	return selectedModels, customModels
+}
+
+func buildProviderModelOptions(selectedModels []string, customModelRegistry []string) []huh.Option[string] {
+	presetSet := presetModelSet()
+	selectedSet := make(map[string]bool, len(selectedModels))
+	for _, modelID := range selectedModels {
+		if trimmed := strings.TrimSpace(modelID); trimmed != "" {
+			selectedSet[trimmed] = true
+		}
+	}
+
+	opts := make([]huh.Option[string], 0, len(models.PresetModels)+len(customModelRegistry))
+	for _, modelID := range models.PresetModels {
+		opt := huh.NewOption(modelID, modelID)
+		if selectedSet[modelID] {
+			opt = opt.Selected(true)
+		}
+		opts = append(opts, opt)
+	}
+
+	for _, modelID := range customModelRegistry {
+		trimmed := strings.TrimSpace(modelID)
+		if trimmed == "" || presetSet[trimmed] {
+			continue
+		}
+		opt := huh.NewOption(trimmed, trimmed)
+		if selectedSet[trimmed] {
+			opt = opt.Selected(true)
+		}
+		opts = append(opts, opt)
+	}
+
+	return opts
+}
+
+func finalProviderModels(selectedModels []string) []string {
+	finalModels := make([]string, 0, len(selectedModels))
+	for _, modelID := range selectedModels {
+		if trimmed := strings.TrimSpace(modelID); trimmed != "" {
+			finalModels = appendUniqueStrings(finalModels, trimmed)
+		}
+	}
+	return finalModels
+}
+
+func providerModelListTheme() *huh.Theme {
+	theme := huh.ThemeCharm()
+	theme.Focused.SelectedPrefix = lipgloss.NewStyle().SetString("[✓] ")
+	theme.Focused.UnselectedPrefix = lipgloss.NewStyle().SetString("[ ] ")
+	theme.Blurred.SelectedPrefix = lipgloss.NewStyle().SetString("[✓] ")
+	theme.Blurred.UnselectedPrefix = lipgloss.NewStyle().SetString("[ ] ")
+	return theme
+}
+
+func parseCustomModelInput(input string) []string {
+	normalized := strings.NewReplacer(
+		"；", ",",
+		";", ",",
+		"，", ",",
+		"\r\n", "\n",
+		"\r", "\n",
+		"\n", ",",
+	).Replace(input)
+
+	parts := strings.Split(normalized, ",")
+	models := make([]string, 0, len(parts))
+	for _, part := range parts {
+		if trimmed := strings.TrimSpace(part); trimmed != "" {
+			models = appendUniqueStrings(models, trimmed)
+		}
+	}
+	return models
+}
+
+type providerCustomRegistration struct {
+	handled bool
+	added   bool
+}
+
+func registerProviderCustomModels(selectedModels []string, customModelRegistry []string, input string) ([]string, []string, []string) {
+	presetSet := presetModelSet()
+	updatedSelected := append([]string(nil), selectedModels...)
+	updatedRegistry := append([]string(nil), customModelRegistry...)
+	addedCustomModels := make([]string, 0)
+
+	for _, modelID := range parseCustomModelInput(input) {
+		updatedSelected = appendUniqueStrings(updatedSelected, modelID)
+		if presetSet[modelID] {
+			continue
+		}
+		beforeLen := len(updatedRegistry)
+		updatedRegistry = appendUniqueStrings(updatedRegistry, modelID)
+		if len(updatedRegistry) > beforeLen {
+			addedCustomModels = append(addedCustomModels, modelID)
+		}
+	}
+
+	return updatedSelected, updatedRegistry, addedCustomModels
+}
+
+type providerCustomModelInput struct {
+	input    *huh.Input
+	accessor *huh.PointerAccessor[string]
+	keymap   *huh.KeyMap
+	onSubmit func(string) providerCustomRegistration
+}
+
+func newProviderCustomModelInput(value *string, onSubmit func(string) providerCustomRegistration) *providerCustomModelInput {
+	accessor := huh.NewPointerAccessor(value)
+	return &providerCustomModelInput{
+		input: huh.NewInput().
+			Title("自定义模型名称（可选，多个可用逗号/换行分隔）").
+			Placeholder("my-custom-model-a, my-custom-model-b").
+			Accessor(accessor),
+		accessor: accessor,
+		onSubmit: onSubmit,
+	}
+}
+
+func (f *providerCustomModelInput) Init() tea.Cmd { return f.input.Init() }
+
+func (f *providerCustomModelInput) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if keyMsg, ok := msg.(tea.KeyMsg); ok && f.keymap != nil {
+		if key.Matches(keyMsg, f.keymap.Input.Next, f.keymap.Input.Submit) {
+			result := f.onSubmit(f.accessor.Get())
+			if result.handled {
+				f.accessor.Set("")
+				f.input.Accessor(f.accessor)
+				return f, huh.PrevField
+			}
+		}
+	}
+	m, cmd := f.input.Update(msg)
+	f.input = m.(*huh.Input)
+	return f, cmd
+}
+
+func (f *providerCustomModelInput) View() string { return f.input.View() }
+func (f *providerCustomModelInput) Blur() tea.Cmd { return f.input.Blur() }
+func (f *providerCustomModelInput) Focus() tea.Cmd { return f.input.Focus() }
+func (f *providerCustomModelInput) Error() error { return f.input.Error() }
+func (f *providerCustomModelInput) Run() error { return f.input.Run() }
+func (f *providerCustomModelInput) Skip() bool { return f.input.Skip() }
+func (f *providerCustomModelInput) Zoom() bool { return f.input.Zoom() }
+func (f *providerCustomModelInput) KeyBinds() []key.Binding { return f.input.KeyBinds() }
+
+func (f *providerCustomModelInput) WithTheme(theme *huh.Theme) huh.Field {
+	f.input = f.input.WithTheme(theme).(*huh.Input)
+	return f
+}
+
+func (f *providerCustomModelInput) WithAccessible(accessible bool) huh.Field {
+	f.input = f.input.WithAccessible(accessible).(*huh.Input)
+	return f
+}
+
+func (f *providerCustomModelInput) WithKeyMap(k *huh.KeyMap) huh.Field {
+	f.keymap = k
+	f.input = f.input.WithKeyMap(k).(*huh.Input)
+	return f
+}
+
+func (f *providerCustomModelInput) WithWidth(width int) huh.Field {
+	f.input = f.input.WithWidth(width).(*huh.Input)
+	return f
+}
+
+func (f *providerCustomModelInput) WithHeight(height int) huh.Field {
+	f.input = f.input.WithHeight(height).(*huh.Input)
+	return f
+}
+
+func (f *providerCustomModelInput) WithPosition(position huh.FieldPosition) huh.Field {
+	f.input = f.input.WithPosition(position).(*huh.Input)
+	return f
+}
+
+func (f *providerCustomModelInput) GetKey() string { return f.input.GetKey() }
+func (f *providerCustomModelInput) GetValue() any { return f.input.GetValue() }
+
+func appendUniqueStrings(items []string, value string) []string {
+	for _, item := range items {
+		if item == value {
+			return items
+		}
+	}
+	return append(items, value)
+}
+
 func editProvider(p config.ProviderConfig) (config.ProviderConfig, bool, error) {
 	name := p.Name
 	// 格式感知的展示剥离：仅对自动补全 /v1 的格式剥除，google-generative-ai 原样
@@ -393,30 +615,29 @@ func editProvider(p config.ProviderConfig) (config.ProviderConfig, bool, error) 
 	}
 	apiKey := p.ApiKey
 
-	// 构建预设模型集合，用于快速判断自定义模型
-	presetSet := make(map[string]bool, len(models.PresetModels))
-	for _, m := range models.PresetModels {
-		presetSet[m] = true
-	}
+	selectedModels, customModelRegistry := splitProviderModelsForEdit(p.Models)
+	customModelInput := ""
+	modelOptionsVersion := 0
 
-	// 构建 MultiSelect 选项：预设 + 已有自定义模型 + "自定义..."
-	presetOpts := make([]huh.Option[string], 0, len(models.PresetModels)+1)
-	for _, m := range models.PresetModels {
-		presetOpts = append(presetOpts, huh.NewOption(m, m))
-	}
-	for _, m := range p.Models {
-		if !presetSet[m] {
-			presetOpts = append(presetOpts, huh.NewOption(m+" (自定义)", m))
-		}
-	}
-	presetOpts = append(presetOpts, huh.NewOption("自定义...", "__custom__"))
-
-	selectedModels := make([]string, 0)
-	for _, m := range p.Models {
-		selectedModels = append(selectedModels, m)
-	}
-
-	customModel := ""
+	customModelField := newProviderCustomModelInput(
+		&customModelInput,
+		func(raw string) providerCustomRegistration {
+			parsed := parseCustomModelInput(raw)
+			if len(parsed) == 0 {
+				return providerCustomRegistration{}
+			}
+			var added []string
+			selectedModels, customModelRegistry, added = registerProviderCustomModels(selectedModels, customModelRegistry, raw)
+			result := providerCustomRegistration{
+				handled: true,
+				added:   len(added) > 0,
+			}
+			if result.added {
+				modelOptionsVersion++
+			}
+			return result
+		},
+	)
 
 	form := newForm(huh.NewGroup(
 		huh.NewInput().
@@ -464,20 +685,19 @@ func editProvider(p config.ProviderConfig) (config.ProviderConfig, bool, error) 
 			Value(&apiKey),
 		huh.NewMultiSelect[string]().
 			Title("模型列表").
-			Description("空格/x 切换选中，↑↓ 移动，enter 确认\n选择此 provider 支持的模型（至少一项）；可同时选「自定义...」再在下方填入自定义名称").
-			Options(presetOpts...).
+			Description("空格/x 切换选中，↑↓ 移动，enter 确认\n选择此 provider 支持的预设模型；如需自定义模型，请在下方输入框填写，可一次填写多个").
+			OptionsFunc(func() []huh.Option[string] {
+				return buildProviderModelOptions(selectedModels, customModelRegistry)
+			}, &modelOptionsVersion).
 			Validate(func(selected []string) error {
-				// 只检查完全未选的情况；选了 __custom__ 放行，由 form.Run() 后的逻辑做最终校验
-				if len(selected) == 0 {
+				if len(finalProviderModels(selected)) == 0 {
 					return fmt.Errorf("请至少选择一个模型")
 				}
 				return nil
 			}).
-			Value(&selectedModels),
-		huh.NewInput().
-			Title("自定义模型名称（可选，留空跳过）").
-			Placeholder("my-custom-model").
-			Value(&customModel),
+			Value(&selectedModels).
+			WithTheme(providerModelListTheme()),
+		customModelField,
 	))
 
 	if err := runForm(form); err != nil {
@@ -487,22 +707,11 @@ func editProvider(p config.ProviderConfig) (config.ProviderConfig, bool, error) 
 		return config.ProviderConfig{}, false, err
 	}
 
-	// 整理模型列表
-	finalModels := []string{}
-	for _, m := range selectedModels {
-		if m != "__custom__" {
-			finalModels = append(finalModels, m)
-		}
-	}
-	if ct := strings.TrimSpace(customModel); ct != "" {
-		finalModels = append(finalModels, ct)
-	}
-	// 若没有任何选择，返回错误
+	finalModels := finalProviderModels(selectedModels)
 	if len(finalModels) == 0 {
 		return config.ProviderConfig{}, false, fmt.Errorf("provider %q 的模型列表不能为空", name)
 	}
 
-	// 先确定 apiFormat，再规范化 URL（NormalizeBaseURL 依赖 apiFormat）
 	apiFormat := detectFormatFromModels(finalModels)
 	baseUrl = config.NormalizeBaseURL(strings.TrimSpace(baseUrl), apiFormat)
 
