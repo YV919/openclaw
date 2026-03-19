@@ -5,3 +5,4 @@ openclaw-config
 openclaw_config
 .DS_Store
 .worktrees/
+.superpowers/
