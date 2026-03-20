@@ -143,4 +143,10 @@ $:
               - "./dist/openclaw-config-*"
             ttl: 0
 
+        # 5. 清理旧版本，只保留最近3个
+        - name: 清理旧版本
+          image: docker.cnb.cool/cnb/plugins/cnbcool/release-clean:latest
+          settings:
+            filter: "RECENT_N=3"
+            debug: false
 
