@@ -268,7 +268,7 @@ func pickProviderAction(providers []config.ProviderConfig) (string, error) {
 	form := newForm(huh.NewGroup(
 		huh.NewSelect[string]().
 			Title("Provider 管理").
-			Description("选择要操作的 Provider，或添加新的").
+			Description(providerManagementDescription()).
 			Options(opts...).
 			Value(&selected),
 	))
@@ -344,6 +344,12 @@ func renderHelpFooter(text string) string {
 const defaultHelpFooterText = "ctrl+c 取消  ·  shift+tab 上一项  ·  enter 确认"
 
 const providerModelListFocusedHelpFooterText = "ctrl+c 取消  ·  shift+tab 上一项  ·  空格/x 切换选中  ·  ↑↓ 移动  ·  enter 确认"
+
+const providerFormatSplitReminderText = "提醒：同一 Provider 只配置一种模型格式；OpenAI 兼容、GPT-5 系列、Anthropic、Gemini 请分开配置。"
+
+func providerManagementDescription() string {
+	return "选择要操作的 Provider，或添加新的。\n" + providerFormatSplitReminderText
+}
 
 func providerEditorHelpFooter(modelListFocused bool) string {
 	if modelListFocused {
@@ -1344,7 +1350,7 @@ func detectFormatFromModels(models []string) string {
 	for _, m := range models {
 		fmt.Println(dim.Render(fmt.Sprintf("    · %s → %s", m, config.DetectAPIFormat(m))))
 	}
-	fmt.Println(dim.Render("  建议：将不同格式的模型拆分为独立 provider"))
+	fmt.Println(dim.Render("  建议：一个 Provider 只配置一种模型格式；OpenAI 兼容、GPT-5 系列、Anthropic、Gemini 请拆分为独立 Provider"))
 	fmt.Println()
 	return config.DetectAPIFormat(models[0])
 }
