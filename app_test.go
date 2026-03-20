@@ -31,6 +31,15 @@ func TestProviderManagementDescriptionUsesFormatReminderCopy(t *testing.T) {
 	}
 }
 
+func TestSavedConfigNoticeDescriptionMatchesHybridReloadGuidance(t *testing.T) {
+	got := savedConfigNoticeDescription()
+	want := "✓ 配置已保存。默认在 OpenClaw 的 hybrid reload 下，大多数 agent/model 变更会自动生效。\n若修改 gateway/plugins/discovery/canvasHost，请执行 openclaw gateway restart。"
+
+	if got != want {
+		t.Fatalf("savedConfigNoticeDescription() = %q, want %q", got, want)
+	}
+}
+
 func TestDetectFormatFromModels(t *testing.T) {
 	tests := []struct {
 		name     string

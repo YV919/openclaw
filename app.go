@@ -349,6 +349,10 @@ func providerManagementDescription() string {
 	return "同一 Provider 只配置一种模型格式。\nOpenAI 兼容、GPT-5 系列、Anthropic、Gemini 请分开配置。"
 }
 
+func savedConfigNoticeDescription() string {
+	return "✓ 配置已保存。默认在 OpenClaw 的 hybrid reload 下，大多数 agent/model 变更会自动生效。\n若修改 gateway/plugins/discovery/canvasHost，请执行 openclaw gateway restart。"
+}
+
 func providerEditorHelpFooter(modelListFocused bool) string {
 	if modelListFocused {
 		return renderHelpFooter(providerModelListFocusedHelpFooterText)
@@ -1293,7 +1297,7 @@ func printSuccess(cfg *config.FullConfig) {
 	f := newForm(huh.NewGroup(
 		huh.NewNote().
 			Title("提示").
-			Description("✓ 配置已保存，下次请求时自动生效（支持热切换，无需重启网关）。").
+			Description(savedConfigNoticeDescription()).
 			Next(true).
 			NextLabel("按 Enter 退出"),
 	))
