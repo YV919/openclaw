@@ -6,14 +6,14 @@ import (
 	"os"
 )
 
-var Version = "dev"
+var Version = "1.2.2"
 
 func main() {
 	showVersion := flag.Bool("version", false, "显示版本信息")
 	flag.Parse()
 
 	if *showVersion {
-		fmt.Printf("openclaw-config %s\n", Version)
+		fmt.Printf("openclaw-config %s\n", displayVersion(Version))
 		os.Exit(0)
 	}
 

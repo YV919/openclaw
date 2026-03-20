@@ -4,10 +4,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"net/url"
 	"os"
 	"reflect"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
@@ -44,7 +46,16 @@ func (a *App) Run() error {
 		return fmt.Errorf("读取配置失败: %w", err)
 	}
 
-	printBanner()
+	updateStatus, err := checkForUpdates(
+		&http.Client{Timeout: 5 * time.Second},
+		Version,
+		defaultReleasesURL,
+	)
+	if err != nil {
+		updateStatus = releaseUpdateStatus{}
+	}
+
+	printBanner(updateStatus)
 
 	// 展示兼容性修复日志
 	if len(fixLogs) > 0 {
@@ -1410,9 +1421,10 @@ func printSuccess(cfg *config.FullConfig) {
 	runForm(f) //nolint:errcheck
 }
 
-func printBanner() {
+func printBanner(updateStatus releaseUpdateStatus) {
 	purple := lipgloss.Color("63")
 	gray := lipgloss.Color("240")
+	yellow := lipgloss.Color("220")
 
 	art := "  ██████╗ ███╗   ███╗██╗  ██╗ █████╗ ██████╗ ██╗\n" +
 		"  ██╔══██╗████╗ ████║╚██╗██╔╝██╔══██╗██╔══██╗██║\n" +
@@ -1423,7 +1435,7 @@ func printBanner() {
 
 	logo := lipgloss.NewStyle().Foreground(purple).Render(art)
 	subtitle := lipgloss.NewStyle().Bold(true).
-		Render("  OpenClaw 配置工具  ·  openclaw-config " + Version)
+		Render("  OpenClaw 配置工具  ·  openclaw-config " + displayVersion(Version))
 	sep := lipgloss.NewStyle().Foreground(gray).
 		Render("  ────────────────────────────────────────────────")
 	note := lipgloss.NewStyle().Foreground(gray).
@@ -1434,6 +1446,13 @@ func printBanner() {
 	fmt.Println(subtitle)
 	fmt.Println(sep)
 	fmt.Println(note)
+	if updateLine := buildUpdateStatusLine(updateStatus); updateLine != "" {
+		style := lipgloss.NewStyle().Foreground(gray)
+		if updateStatus.HasUpdate {
+			style = lipgloss.NewStyle().Foreground(yellow).Bold(true)
+		}
+		fmt.Println(style.Render("  " + updateLine))
+	}
 	fmt.Println()
 }
 
