@@ -3,14 +3,14 @@ set -eu
 
 REPO_SLUG=${OPENCLAW_CONFIG_REPO_SLUG:-dmxapi/openclaw_config}
 REPO_URL=${OPENCLAW_CONFIG_REPO_URL:-https://cnb.cool/$REPO_SLUG}
-BINARY_NAME=openclaw-config
+BINARY_NAME=${OPENCLAW_CONFIG_BINARY_NAME:-openclaw-config}
 
 log() {
   printf '%s\n' "$*" >&2
 }
 
 die() {
-  log "安装失败: $*"
+  log "运行失败: $*"
   exit 1
 }
 
@@ -71,69 +71,6 @@ asset_name_for() {
   esac
 }
 
-command_name_for() {
-  case "$1" in
-    windows)
-      printf '%s\n' "$BINARY_NAME.exe"
-      ;;
-    *)
-      printf '%s\n' "$BINARY_NAME"
-      ;;
-  esac
-}
-
-path_contains_dir() {
-  search_dir=$1
-  path_value=${2:-}
-  old_ifs=$IFS
-  IFS=:
-
-  for entry in $path_value; do
-    if [ "$entry" = "$search_dir" ]; then
-      IFS=$old_ifs
-      return 0
-    fi
-  done
-
-  IFS=$old_ifs
-  return 1
-}
-
-choose_install_dir() {
-  os=$1
-  command_name=$2
-
-  if [ -n "${INSTALL_DIR:-}" ]; then
-    printf '%s\n' "$INSTALL_DIR"
-    return 0
-  fi
-
-  existing_path=$(command -v "$command_name" 2>/dev/null || true)
-  if [ -n "$existing_path" ]; then
-    existing_dir=$(dirname "$existing_path")
-    if [ -w "$existing_dir" ]; then
-      printf '%s\n' "$existing_dir"
-      return 0
-    fi
-  fi
-
-  if [ "$os" != "windows" ] && [ -d "/usr/local/bin" ] && [ -w "/usr/local/bin" ]; then
-    printf '%s\n' "/usr/local/bin"
-    return 0
-  fi
-
-  if [ "$os" = "macos" ] && [ -d "/opt/homebrew/bin" ] && [ -w "/opt/homebrew/bin" ]; then
-    printf '%s\n' "/opt/homebrew/bin"
-    return 0
-  fi
-
-  if [ -z "${HOME:-}" ]; then
-    die "未设置 HOME，请通过 INSTALL_DIR 指定安装目录"
-  fi
-
-  printf '%s\n' "$HOME/.local/bin"
-}
-
 extract_latest_tag() {
   latest_tag=$(sed -n 's#.*href="/[^"]*/-/releases/tag/\([^"]*\)".*#\1#p' | head -n 1)
 
@@ -170,6 +107,17 @@ download_asset() {
     "$REPO_URL/-/releases/download/$tag/$asset_name" || die "下载 $asset_name 失败"
 }
 
+make_temp_dir() {
+  if [ -n "${OPENCLAW_CONFIG_TMPDIR:-}" ]; then
+    mkdir -p "$OPENCLAW_CONFIG_TMPDIR" || die "无法创建临时目录根路径: $OPENCLAW_CONFIG_TMPDIR"
+    mktemp -d "$OPENCLAW_CONFIG_TMPDIR/openclaw-config-run.XXXXXX" 2>/dev/null ||
+      die "无法在 $OPENCLAW_CONFIG_TMPDIR 下创建临时目录"
+    return 0
+  fi
+
+  mktemp -d 2>/dev/null || mktemp -d -t openclaw-config-run
+}
+
 clear_macos_quarantine() {
   target_path=$1
 
@@ -182,25 +130,15 @@ clear_macos_quarantine() {
   fi
 }
 
-print_success() {
-  install_dir=$1
-  target_path=$2
-  command_name=$3
-  tag=$4
+run_binary() {
+  binary_path=$1
+  shift
 
-  log ""
-  log "已安装 $command_name ($tag)"
-  log "安装路径: $target_path"
-
-  if path_contains_dir "$install_dir" "${PATH:-}"; then
-    log "直接运行: $command_name --version"
+  if "$binary_path" "$@"; then
     return 0
   fi
 
-  log "当前 PATH 不包含 $install_dir"
-  log "你可以直接运行: \"$target_path\" --version"
-  log "也可以把下面这一行加入 shell 配置文件后重新打开终端:"
-  log "export PATH=\"$install_dir:\$PATH\""
+  return $?
 }
 
 main() {
@@ -212,30 +150,29 @@ main() {
   os=$(normalize_os "$uname_s") || die "暂不支持的系统: $uname_s"
   arch=$(normalize_arch "$uname_m") || die "暂不支持的架构: $uname_m"
   asset_name=$(asset_name_for "$os" "$arch") || die "暂不支持的平台组合: $os/$arch"
-  command_name=$(command_name_for "$os")
-  install_dir=$(choose_install_dir "$os" "$command_name")
   latest_tag=$(fetch_latest_tag)
 
-  tmp_dir=$(mktemp -d 2>/dev/null || mktemp -d -t openclaw-config-install)
+  tmp_dir=$(make_temp_dir)
   trap 'rm -rf "$tmp_dir"' EXIT HUP INT TERM
 
-  mkdir -p "$install_dir" || die "无法创建安装目录: $install_dir"
-
   tmp_asset="$tmp_dir/$asset_name"
-  target_path="$install_dir/$command_name"
 
   log "检测到平台: $os/$arch"
-  log "准备安装版本: $latest_tag"
-  log "安装目录: $install_dir"
+  log "准备运行版本: $latest_tag"
+  log "正在下载并启动 $BINARY_NAME..."
 
   download_asset "$latest_tag" "$asset_name" "$tmp_asset"
   chmod 755 "$tmp_asset" >/dev/null 2>&1 || true
-  mv "$tmp_asset" "$target_path" || die "无法写入 $target_path"
+  clear_macos_quarantine "$tmp_asset"
 
-  clear_macos_quarantine "$target_path"
-  print_success "$install_dir" "$target_path" "$command_name" "$latest_tag"
+  if run_binary "$tmp_asset" "$@"; then
+    exit 0
+  else
+    status=$?
+    exit "$status"
+  fi
 }
 
-if [ "${OPENCLAW_CONFIG_INSTALL_TESTING:-0}" != "1" ]; then
+if [ "${OPENCLAW_CONFIG_RUN_TESTING:-0}" != "1" ]; then
   main "$@"
 fi

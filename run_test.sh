@@ -3,8 +3,8 @@ set -eu
 
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 
-OPENCLAW_CONFIG_INSTALL_TESTING=1
-. "$SCRIPT_DIR/install.sh"
+OPENCLAW_CONFIG_RUN_TESTING=1
+. "$SCRIPT_DIR/run.sh"
 
 PASS_COUNT=0
 FAIL_COUNT=0
@@ -74,10 +74,28 @@ test_extract_latest_tag() {
 
 test_extract_latest_tag_failure() {
   assert_status 1 "missing release tag should fail" sh -c '
-    OPENCLAW_CONFIG_INSTALL_TESTING=1
-    . "'"$SCRIPT_DIR"'/install.sh"
+    OPENCLAW_CONFIG_RUN_TESTING=1
+    . "'"$SCRIPT_DIR"'/run.sh"
     printf "%s" "<html></html>" | extract_latest_tag >/dev/null
   '
+}
+
+test_make_temp_dir_custom_root() {
+  temp_root=$(mktemp -d 2>/dev/null || mktemp -d -t openclaw-config-run-test)
+  OPENCLAW_CONFIG_TMPDIR=$temp_root
+  created=$(make_temp_dir)
+
+  case "$created" in
+    "$temp_root"/*)
+      pass
+      ;;
+    *)
+      fail "temp dir should use custom root (actual: $created)"
+      ;;
+  esac
+
+  unset OPENCLAW_CONFIG_TMPDIR
+  rm -rf "$created" "$temp_root"
 }
 
 test_normalize_os
@@ -85,6 +103,7 @@ test_normalize_arch
 test_asset_name_for
 test_extract_latest_tag
 test_extract_latest_tag_failure
+test_make_temp_dir_custom_root
 
 if [ "$FAIL_COUNT" -ne 0 ]; then
   printf '\n%d tests failed, %d passed\n' "$FAIL_COUNT" "$PASS_COUNT" >&2

@@ -178,27 +178,33 @@ $:
 
               ---
 
-              ### ⚡ 一键安装（推荐）
+              ### ⚡ 直接运行（推荐）
 
-              适用平台：Linux、macOS、Windows Git Bash / MSYS / Cygwin
-
-              ```bash
-              curl -fsSL https://cnb.cool/dmxapi/openclaw_config/-/git/raw/main/install.sh | sh
-              ```
-
-              指定安装目录：
+              macOS / Linux：
 
               ```bash
-              curl -fsSL https://cnb.cool/dmxapi/openclaw_config/-/git/raw/main/install.sh | env INSTALL_DIR=/usr/local/bin sh
+              curl -fsSL https://cnb.cool/dmxapi/openclaw_config/-/git/raw/main/run.sh | sh
               ```
 
-              安装当前 Release 版本：
+              Windows PowerShell：
+
+              ```powershell
+              irm https://cnb.cool/dmxapi/openclaw_config/-/git/raw/main/run.ps1 | iex
+              ```
+
+              Windows cmd：
+
+              ```bat
+              curl.exe -fsSL https://cnb.cool/dmxapi/openclaw_config/-/git/raw/main/run.cmd | cmd
+              ```
+
+              指定当前 Release 版本运行：
 
               ```bash
-              curl -fsSL https://cnb.cool/dmxapi/openclaw_config/-/git/raw/main/install.sh | env OPENCLAW_CONFIG_VERSION=${CNB_BRANCH} sh
+              curl -fsSL https://cnb.cool/dmxapi/openclaw_config/-/git/raw/main/run.sh | env OPENCLAW_CONFIG_VERSION=${CNB_BRANCH} sh
               ```
 
-              > **说明**：Windows PowerShell 用户建议使用下方附件方式；如果使用的是 Git Bash / MSYS / Cygwin，也可以直接执行上面的 `curl | sh` 命令。
+              以上命令会临时下载对应平台的二进制，直接启动程序，并在退出后自动清理。
 
               ---
 
@@ -211,15 +217,6 @@ $:
               | Windows | x64 | `openclaw-config-windows-amd64.exe` |
               | macOS | Intel | `openclaw-config-macos-amd64` |
               | macOS | Apple Silicon | `openclaw-config-macos-arm64` |
-
-              ---
-
-              ### ▶️ 一键安装后运行
-
-              ```bash
-              openclaw-config --version
-              openclaw-config
-              ```
 
               ---
 
