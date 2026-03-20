@@ -178,7 +178,31 @@ $:
 
               ---
 
-              ### 📥 下载
+              ### ⚡ 一键安装（推荐）
+
+              适用平台：Linux、macOS、Windows Git Bash / MSYS / Cygwin
+
+              ```bash
+              curl -fsSL https://cnb.cool/dmxapi/openclaw_config/-/git/raw/main/install.sh | sh
+              ```
+
+              指定安装目录：
+
+              ```bash
+              curl -fsSL https://cnb.cool/dmxapi/openclaw_config/-/git/raw/main/install.sh | env INSTALL_DIR=/usr/local/bin sh
+              ```
+
+              安装当前 Release 版本：
+
+              ```bash
+              curl -fsSL https://cnb.cool/dmxapi/openclaw_config/-/git/raw/main/install.sh | env OPENCLAW_CONFIG_VERSION=${CNB_BRANCH} sh
+              ```
+
+              > **说明**：Windows PowerShell 用户建议使用下方附件方式；如果使用的是 Git Bash / MSYS / Cygwin，也可以直接执行上面的 `curl | sh` 命令。
+
+              ---
+
+              ### 📥 手动下载
 
               | 平台 | 架构 | 文件 |
               |------|------|------|
@@ -190,7 +214,16 @@ $:
 
               ---
 
-              ### 🛠️ 使用说明
+              ### ▶️ 一键安装后运行
+
+              ```bash
+              openclaw-config --version
+              openclaw-config
+              ```
+
+              ---
+
+              ### 🛠️ 手动下载后运行
 
               #### Linux
               ```bash
