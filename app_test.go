@@ -6,7 +6,6 @@ import (
 	"reflect"
 	"strings"
 	"testing"
-	"unsafe"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/huh"
@@ -21,18 +20,6 @@ func suppressStdout(f func()) {
 	w.Close()
 	os.Stdout = old
 	io.ReadAll(r) //nolint:errcheck
-}
-
-func moveMultiSelectViewportToBottom[T comparable](t *testing.T, field *huh.MultiSelect[T]) {
-	t.Helper()
-
-	viewport := reflect.ValueOf(field).Elem().FieldByName("viewport")
-	viewportPtr := reflect.NewAt(viewport.Type(), unsafe.Pointer(viewport.UnsafeAddr()))
-	method := viewportPtr.MethodByName("GotoBottom")
-	if !method.IsValid() {
-		t.Fatal("MultiSelect viewport missing GotoBottom")
-	}
-	method.Call(nil)
 }
 
 func TestDetectFormatFromModels(t *testing.T) {
@@ -262,41 +249,6 @@ func TestProviderModelListFieldViewAppendsOverflowHintBelowOptions(t *testing.T)
 	want := "↓ 更多模型（还有 5 项，继续向下查看）"
 	if !strings.Contains(got, want) {
 		t.Fatalf("view = %q, want substring %q", got, want)
-	}
-}
-
-func TestProviderModelListFieldViewHidesOverflowHintAtBottom(t *testing.T) {
-	var selected []string
-	field := newProviderModelListField(
-		huh.NewMultiSelect[string]().
-			Title("模型列表").
-			Description(providerModelListBaseDescription).
-			Options(
-				huh.NewOption("a", "a"),
-				huh.NewOption("b", "b"),
-				huh.NewOption("c", "c"),
-				huh.NewOption("d", "d"),
-				huh.NewOption("e", "e"),
-				huh.NewOption("f", "f"),
-				huh.NewOption("g", "g"),
-				huh.NewOption("h", "h"),
-				huh.NewOption("i", "i"),
-				huh.NewOption("j", "j"),
-			).
-			Value(&selected).
-			WithTheme(providerModelListTheme()).(*huh.MultiSelect[string]),
-		func(int) int { return 8 },
-		func() int { return 10 },
-	)
-	field.WithKeyMap(chineseKeyMap())
-	field.Focus()
-	field.lastWindowHeight = 8
-	field.View()
-	moveMultiSelectViewportToBottom(t, field.field)
-
-	got := field.View()
-	if strings.Contains(got, "继续向下查看") {
-		t.Fatalf("view = %q, want no downward overflow hint at bottom", got)
 	}
 }
 

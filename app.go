@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net/url"
 	"os"
-	"reflect"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/key"
@@ -550,33 +549,6 @@ func providerModelListOverflowHint(p providerModelListPresentation) string {
 	return fmt.Sprintf("↓ 更多模型（还有 %d 项，继续向下查看）", p.hiddenCount)
 }
 
-func providerModelListRemainingBelow(
-	field *huh.MultiSelect[string],
-	p providerModelListPresentation,
-	optionCount int,
-) int {
-	if !p.showOverflowHint || optionCount <= 0 {
-		return 0
-	}
-
-	visibleRows := max(1, p.visibleRows)
-	topOffset := 0
-
-	if fieldValue := reflect.ValueOf(field); fieldValue.IsValid() && fieldValue.Kind() == reflect.Pointer && !fieldValue.IsNil() {
-		elem := fieldValue.Elem()
-		if viewport := elem.FieldByName("viewport"); viewport.IsValid() {
-			if height := viewport.FieldByName("Height"); height.IsValid() && height.Kind() == reflect.Int {
-				visibleRows = max(1, int(height.Int()))
-			}
-			if yOffset := viewport.FieldByName("YOffset"); yOffset.IsValid() && yOffset.Kind() == reflect.Int {
-				topOffset = max(0, int(yOffset.Int()))
-			}
-		}
-	}
-
-	return max(0, optionCount-(topOffset+visibleRows))
-}
-
 const providerFieldGapLines = 2
 
 func providerModelListAvailableFieldHeight(windowHeight int, otherViews ...string) int {
@@ -641,9 +613,7 @@ func (f *providerModelListField) View() string {
 		f.syncPresentation(f.lastWindowHeight)
 	}
 	view := f.field.View()
-	currentPresentation := f.presentation
-	currentPresentation.hiddenCount = providerModelListRemainingBelow(f.field, f.presentation, f.optionCount())
-	if hint := providerModelListOverflowHint(currentPresentation); hint != "" {
+	if hint := providerModelListOverflowHint(f.presentation); hint != "" {
 		return view + "\n" + hint
 	}
 	return view
@@ -659,11 +629,11 @@ func (f *providerModelListField) Focus() tea.Cmd {
 	return f.field.Focus()
 }
 
-func (f *providerModelListField) IsFocused() bool         { return f.focused }
-func (f *providerModelListField) Error() error            { return f.field.Error() }
-func (f *providerModelListField) Run() error              { return f.field.Run() }
-func (f *providerModelListField) Skip() bool              { return f.field.Skip() }
-func (f *providerModelListField) Zoom() bool              { return f.field.Zoom() }
+func (f *providerModelListField) IsFocused() bool { return f.focused }
+func (f *providerModelListField) Error() error    { return f.field.Error() }
+func (f *providerModelListField) Run() error      { return f.field.Run() }
+func (f *providerModelListField) Skip() bool      { return f.field.Skip() }
+func (f *providerModelListField) Zoom() bool      { return f.field.Zoom() }
 func (f *providerModelListField) KeyBinds() []key.Binding { return f.field.KeyBinds() }
 
 func (f *providerModelListField) WithTheme(theme *huh.Theme) huh.Field {
