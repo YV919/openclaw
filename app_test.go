@@ -22,6 +22,15 @@ func suppressStdout(f func()) {
 	io.ReadAll(r) //nolint:errcheck
 }
 
+func TestProviderManagementDescriptionUsesFormatReminderCopy(t *testing.T) {
+	got := providerManagementDescription()
+	want := "同一 Provider 只配置一种模型格式。\nOpenAI 兼容、GPT-5 系列、Anthropic、Gemini 请分开配置。"
+
+	if got != want {
+		t.Fatalf("providerManagementDescription() = %q, want %q", got, want)
+	}
+}
+
 func TestDetectFormatFromModels(t *testing.T) {
 	tests := []struct {
 		name     string
