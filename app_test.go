@@ -40,6 +40,23 @@ func TestSavedConfigNoticeDescriptionMatchesHybridReloadGuidance(t *testing.T) {
 	}
 }
 
+func TestSuccessDismissFieldDoesNotSkip(t *testing.T) {
+	field := newSuccessDismissField("测试说明")
+
+	if field.Skip() {
+		t.Fatal("success dismiss field should block until Enter")
+	}
+}
+
+func TestSuccessDismissFieldIgnoresNonSubmitKeys(t *testing.T) {
+	field := newSuccessDismissField("测试说明")
+
+	_, cmd := field.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}})
+	if cmd != nil {
+		t.Fatal("non-submit key should not advance success dismiss field")
+	}
+}
+
 func TestDetectFormatFromModels(t *testing.T) {
 	tests := []struct {
 		name     string

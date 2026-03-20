@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"fmt"
+	"io"
 	"net/url"
 	"os"
 	"reflect"
@@ -352,6 +353,117 @@ func providerManagementDescription() string {
 func savedConfigNoticeDescription() string {
 	return "✓ 配置已保存。默认在 OpenClaw 的 hybrid reload 下，大多数 agent/model 变更会自动生效。\n若修改 gateway/plugins/discovery/canvasHost，请执行 openclaw gateway restart。"
 }
+
+type successDismissField struct {
+	note        *huh.Note
+	title       string
+	description string
+	nextLabel   string
+}
+
+func newSuccessDismissField(description string) *successDismissField {
+	const title = "提示"
+	const nextLabel = "按 Enter 退出"
+	return &successDismissField{
+		title:       title,
+		description: description,
+		nextLabel:   nextLabel,
+		note: huh.NewNote().
+			Title(title).
+			Description(description).
+			Next(true).
+			NextLabel(nextLabel),
+	}
+}
+
+func (f *successDismissField) Init() tea.Cmd { return f.note.Init() }
+
+func (f *successDismissField) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if keyMsg, ok := msg.(tea.KeyMsg); ok {
+		switch keyMsg.String() {
+		case "shift+tab":
+			return f, huh.PrevField
+		case "enter", "tab":
+			return f, huh.NextField
+		default:
+			return f, nil
+		}
+	}
+
+	model, cmd := f.note.Update(msg)
+	f.note = model.(*huh.Note)
+	return f, cmd
+}
+
+func (f *successDismissField) View() string            { return f.note.View() }
+func (f *successDismissField) Blur() tea.Cmd           { return f.note.Blur() }
+func (f *successDismissField) Focus() tea.Cmd          { return f.note.Focus() }
+func (f *successDismissField) Error() error            { return f.note.Error() }
+func (f *successDismissField) Run() error              { return f.note.Run() }
+func (f *successDismissField) Skip() bool              { return false }
+func (f *successDismissField) Zoom() bool              { return f.note.Zoom() }
+func (f *successDismissField) KeyBinds() []key.Binding { return f.note.KeyBinds() }
+
+func (f *successDismissField) RunAccessible(w io.Writer, r io.Reader) error {
+	if _, err := fmt.Fprintln(w, f.title); err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintln(w, f.description); err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintln(w, f.nextLabel); err != nil {
+		return err
+	}
+	if r == nil {
+		return nil
+	}
+
+	buf := make([]byte, 1)
+	for {
+		if _, err := r.Read(buf); err != nil {
+			if errors.Is(err, io.EOF) {
+				return nil
+			}
+			return err
+		}
+		if buf[0] == '\n' || buf[0] == '\r' {
+			return nil
+		}
+	}
+}
+
+func (f *successDismissField) WithTheme(theme *huh.Theme) huh.Field {
+	f.note = f.note.WithTheme(theme).(*huh.Note)
+	return f
+}
+
+func (f *successDismissField) WithAccessible(accessible bool) huh.Field {
+	f.note = f.note.WithAccessible(accessible).(*huh.Note)
+	return f
+}
+
+func (f *successDismissField) WithKeyMap(k *huh.KeyMap) huh.Field {
+	f.note = f.note.WithKeyMap(k).(*huh.Note)
+	return f
+}
+
+func (f *successDismissField) WithWidth(width int) huh.Field {
+	f.note = f.note.WithWidth(width).(*huh.Note)
+	return f
+}
+
+func (f *successDismissField) WithHeight(height int) huh.Field {
+	f.note = f.note.WithHeight(height).(*huh.Note)
+	return f
+}
+
+func (f *successDismissField) WithPosition(position huh.FieldPosition) huh.Field {
+	f.note = f.note.WithPosition(position).(*huh.Note)
+	return f
+}
+
+func (f *successDismissField) GetKey() string { return f.note.GetKey() }
+func (f *successDismissField) GetValue() any  { return f.note.GetValue() }
 
 func providerEditorHelpFooter(modelListFocused bool) string {
 	if modelListFocused {
@@ -1294,13 +1406,7 @@ func printSuccess(cfg *config.FullConfig) {
 	fmt.Println()
 	fmt.Println(box)
 
-	f := newForm(huh.NewGroup(
-		huh.NewNote().
-			Title("提示").
-			Description(savedConfigNoticeDescription()).
-			Next(true).
-			NextLabel("按 Enter 退出"),
-	))
+	f := newForm(huh.NewGroup(newSuccessDismissField(savedConfigNoticeDescription())))
 	runForm(f) //nolint:errcheck
 }
 
