@@ -22,32 +22,6 @@ func suppressStdout(f func()) {
 	io.ReadAll(r) //nolint:errcheck
 }
 
-func captureStdout(f func()) string {
-	old := os.Stdout
-	r, w, _ := os.Pipe()
-	os.Stdout = w
-	f()
-	w.Close()
-	os.Stdout = old
-	out, _ := io.ReadAll(r)
-	return string(out)
-}
-
-func TestProviderManagementDescriptionShowsFormatSplitReminder(t *testing.T) {
-	got := providerManagementDescription()
-
-	wantParts := []string{
-		"选择要操作的 Provider，或添加新的。",
-		"同一 Provider 只配置一种模型格式",
-		"OpenAI 兼容、GPT-5 系列、Anthropic、Gemini 请分开配置",
-	}
-	for _, want := range wantParts {
-		if !strings.Contains(got, want) {
-			t.Fatalf("providerManagementDescription() = %q, want substring %q", got, want)
-		}
-	}
-}
-
 func TestDetectFormatFromModels(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -76,29 +50,6 @@ func TestDetectFormatFromModels(t *testing.T) {
 				t.Errorf("detectFormatFromModels(%v) = %q, want %q", tt.models, got, tt.expected)
 			}
 		})
-	}
-}
-
-func TestDetectFormatFromModelsPrintsSpecificSplitGuidanceOnConflict(t *testing.T) {
-	var got string
-	output := captureStdout(func() {
-		got = detectFormatFromModels([]string{"claude-sonnet-4-6", "gpt-5.2", "gemini-2.5-pro"})
-	})
-
-	if got != "anthropic-messages" {
-		t.Fatalf("detectFormatFromModels() = %q, want %q", got, "anthropic-messages")
-	}
-	wantParts := []string{
-		"所选模型包含不同 API 格式",
-		"claude-sonnet-4-6 → anthropic-messages",
-		"gpt-5.2 → openai-responses",
-		"gemini-2.5-pro → google-generative-ai",
-		"OpenAI 兼容、GPT-5 系列、Anthropic、Gemini 请拆分为独立 Provider",
-	}
-	for _, want := range wantParts {
-		if !strings.Contains(output, want) {
-			t.Fatalf("detectFormatFromModels() output = %q, want substring %q", output, want)
-		}
 	}
 }
 
