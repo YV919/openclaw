@@ -46,7 +46,7 @@ $:
           image: cnbcool/default-build-env
           script:
             - |
-              cat > /tmp/ai_prompt.txt << 'PROMPT_EOF'
+              AI_SYSTEM_PROMPT=$(cat << 'PROMPT_EOF'
               你是一个软件更新日志编辑器。请将以下 git 变更日志改写为面向普通用户的中文更新说明。
 
               要求：
@@ -57,10 +57,10 @@ $:
               5. 输出必须以 "## " 开头（Markdown 二级标题）
               6. 只输出改写后的更新日志，不要输出其他内容
 
-              原始变更日志：
               PROMPT_EOF
-              printf '%s' "${RELEASE_NOTES}" >> /tmp/ai_prompt.txt
-              PROMPT=$(cat /tmp/ai_prompt.txt)
+              )
+              AI_USER_PROMPT=$(printf '原始变更日志：\n%s' "${RELEASE_NOTES}")
+              PROMPT=$(printf '%s\n\n%s' "${AI_SYSTEM_PROMPT}" "${AI_USER_PROMPT}")
               AI_API_BASE=$(printf '%s' "${AI_API_URL}" | sed 's:/*$::')
               AI_MODEL_LOWER=$(printf '%s' "${AI_MODEL}" | tr '[:upper:]' '[:lower:]')
               AI_ROUTE="chat"
@@ -92,8 +92,9 @@ $:
                       -H "Authorization: Bearer ${AI_API_KEY}" \
                       -d "$(jq -n \
                         --arg model "${AI_MODEL}" \
-                        --arg prompt "${PROMPT}" \
-                        '{model: $model, input: $prompt}')"
+                        --arg developer_prompt "${AI_SYSTEM_PROMPT}" \
+                        --arg user_prompt "${AI_USER_PROMPT}" \
+                        '{model: $model, input: [{type: "message", role: "developer", content: [{type: "input_text", text: $developer_prompt}]}, {type: "message", role: "user", content: [{type: "input_text", text: $user_prompt}]}]}')"
                     ;;
                   google)
                     curl -s -w "\n%{http_code}" "${AI_API_BASE}/v1beta/models/${AI_MODEL}:generateContent" \

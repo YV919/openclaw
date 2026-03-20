@@ -51,3 +51,24 @@ func TestCNBYmlAIResponseParsingHandlesEachProviderShape(t *testing.T) {
 		}
 	}
 }
+
+func TestCNBYmlResponsesPayloadUsesCodexStyleMessages(t *testing.T) {
+	content, err := os.ReadFile(".cnb.yml")
+	if err != nil {
+		t.Fatalf("read .cnb.yml: %v", err)
+	}
+
+	text := string(content)
+	requiredSnippets := []string{
+		`type: "message"`,
+		`role: "developer"`,
+		`role: "user"`,
+		`type: "input_text"`,
+	}
+
+	for _, snippet := range requiredSnippets {
+		if !strings.Contains(text, snippet) {
+			t.Fatalf(".cnb.yml missing codex-style responses snippet %q", snippet)
+		}
+	}
+}
