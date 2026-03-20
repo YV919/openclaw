@@ -252,6 +252,46 @@ func TestProviderModelListFieldViewAppendsOverflowHintBelowOptions(t *testing.T)
 	}
 }
 
+func TestProviderModelListFieldViewHidesOverflowHintAtBottom(t *testing.T) {
+	var selected []string
+	field := newProviderModelListField(
+		huh.NewMultiSelect[string]().
+			Title("模型列表").
+			Description(providerModelListBaseDescription).
+			Options(
+				huh.NewOption("a", "a"),
+				huh.NewOption("b", "b"),
+				huh.NewOption("c", "c"),
+				huh.NewOption("d", "d"),
+				huh.NewOption("e", "e"),
+				huh.NewOption("f", "f"),
+				huh.NewOption("g", "g"),
+				huh.NewOption("h", "h"),
+				huh.NewOption("i", "i"),
+				huh.NewOption("j", "j"),
+			).
+			Value(&selected).
+			WithTheme(providerModelListTheme()).(*huh.MultiSelect[string]),
+		func(int) int { return 8 },
+		func() int { return 10 },
+	)
+	field.WithKeyMap(huh.NewDefaultKeyMap())
+
+	model, _ := field.Update(tea.WindowSizeMsg{Height: 8, Width: 80})
+	field = model.(*providerModelListField)
+	_ = field.View()
+	for range 9 {
+		model, _ = field.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
+		field = model.(*providerModelListField)
+		_ = field.View()
+	}
+
+	got := field.View()
+	if strings.Contains(got, "↓ 更多模型") {
+		t.Fatalf("view = %q, want no overflow hint at bottom", got)
+	}
+}
+
 func TestProviderModelListFieldFocusStateTracksFocusAndBlur(t *testing.T) {
 	var selected []string
 	field := newProviderModelListField(
