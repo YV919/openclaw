@@ -61,16 +61,59 @@ $:
               PROMPT_EOF
               printf '%s' "${RELEASE_NOTES}" >> /tmp/ai_prompt.txt
               PROMPT=$(cat /tmp/ai_prompt.txt)
+              AI_API_BASE=$(printf '%s' "${AI_API_URL}" | sed 's:/*$::')
+              AI_MODEL_LOWER=$(printf '%s' "${AI_MODEL}" | tr '[:upper:]' '[:lower:]')
+              AI_ROUTE="chat"
+
+              if echo "${AI_MODEL_LOWER}" | grep -q '^claude'; then
+                AI_ROUTE="anthropic"
+              elif echo "${AI_MODEL_LOWER}" | grep -q '^gpt-5'; then
+                AI_ROUTE="responses"
+              elif echo "${AI_MODEL_LOWER}" | grep -q '^gemini'; then
+                AI_ROUTE="google"
+              fi
 
               call_ai() {
-                curl -s -w "\n%{http_code}" "${AI_API_URL}/v1/messages" \
-                  -H "Content-Type: application/json" \
-                  -H "x-api-key: ${AI_API_KEY}" \
-                  -H "anthropic-version: 2023-06-01" \
-                  -d "$(jq -n \
-                    --arg model "${AI_MODEL}" \
-                    --arg prompt "${PROMPT}" \
-                    '{model: $model, max_tokens: 4096, messages: [{role: "user", content: $prompt}]}')"
+                case "${AI_ROUTE}" in
+                  anthropic)
+                    curl -s -w "\n%{http_code}" "${AI_API_BASE}/v1/messages" \
+                      -H "Content-Type: application/json" \
+                      -H "x-api-key: ${AI_API_KEY}" \
+                      -H "Authorization: Bearer ${AI_API_KEY}" \
+                      -H "anthropic-version: 2023-06-01" \
+                      -d "$(jq -n \
+                        --arg model "${AI_MODEL}" \
+                        --arg prompt "${PROMPT}" \
+                        '{model: $model, max_tokens: 4096, messages: [{role: "user", content: $prompt}]}')"
+                    ;;
+                  responses)
+                    curl -s -w "\n%{http_code}" "${AI_API_BASE}/v1/responses" \
+                      -H "Content-Type: application/json" \
+                      -H "Authorization: Bearer ${AI_API_KEY}" \
+                      -d "$(jq -n \
+                        --arg model "${AI_MODEL}" \
+                        --arg prompt "${PROMPT}" \
+                        '{model: $model, input: $prompt}')"
+                    ;;
+                  google)
+                    curl -s -w "\n%{http_code}" "${AI_API_BASE}/v1beta/models/${AI_MODEL}:generateContent" \
+                      -H "Content-Type: application/json" \
+                      -H "x-goog-api-key: ${AI_API_KEY}" \
+                      -X POST \
+                      -d "$(jq -n \
+                        --arg prompt "${PROMPT}" \
+                        '{contents: [{role: "user", parts: [{text: $prompt}]}]}')"
+                    ;;
+                  *)
+                    curl -s -w "\n%{http_code}" "${AI_API_BASE}/v1/chat/completions" \
+                      -H "Content-Type: application/json" \
+                      -H "Authorization: Bearer ${AI_API_KEY}" \
+                      -d "$(jq -n \
+                        --arg model "${AI_MODEL}" \
+                        --arg prompt "${PROMPT}" \
+                        '{model: $model, messages: [{role: "user", content: $prompt}]}')"
+                    ;;
+                esac
               }
 
               RESPONSE=$(call_ai)
@@ -86,7 +129,20 @@ $:
               fi
 
               if [ "$HTTP_CODE" = "200" ]; then
-                AI_TEXT=$(echo "$BODY" | jq -r '.content[0].text // empty')
+                case "${AI_ROUTE}" in
+                  anthropic)
+                    AI_TEXT=$(echo "$BODY" | jq -r '([.content[]?.text] | join("")) // empty')
+                    ;;
+                  responses)
+                    AI_TEXT=$(echo "$BODY" | jq -r '([.output[]?.content[]? | select(.type == "output_text") | .text] | join("")) // empty')
+                    ;;
+                  google)
+                    AI_TEXT=$(echo "$BODY" | jq -r '([.candidates[0].content.parts[]?.text] | join("")) // empty')
+                    ;;
+                  *)
+                    AI_TEXT=$(echo "$BODY" | jq -r '.choices[0].message.content // empty')
+                    ;;
+                esac
                 AI_LEN=${#AI_TEXT}
                 if echo "$AI_TEXT" | head -1 | grep -q '^## ' && [ "$AI_LEN" -le 10000 ]; then
                   echo "$AI_TEXT"
