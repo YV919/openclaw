@@ -3,12 +3,17 @@ header = """
 # 更新日志\n
 """
 body = """
+{% if version %}
+## {{ version }} - {{ timestamp | date(format="%Y-%m-%d") }}
+{% else %}
+## Unreleased
+{% endif %}
 {% for group, commits in commits | group_by(attribute="group") %}
     ### {{ group | upper_first }}
     {% for commit in commits %}
         - {{ commit.message | upper_first }}
         {%- if commit.body %}
-{{ commit.body | indent(prefix="          ") }}
+{{ commit.body | trim | indent(prefix="  ", first=true) }}
         {%- endif %}\
     {% endfor %}
 {% endfor %}\n

@@ -30,7 +30,125 @@ $:
             - git remote add github https://${GIT_USERNAME}:${GIT_ACCESS_TOKEN}@github.com/YeSongYun/openclaw_config.git || true
             - git push github ${CNB_BRANCH} --force
 
-        # 1. 构建全平台
+        # 1. 生成原始更新日志
+        - name: generate changelog
+          image: cnbcool/default-build-env
+          script:
+            - git fetch --unshallow origin || true
+            - git fetch --tags origin
+            - curl -sSL https://github.com/orhun/git-cliff/releases/download/v2.7.0/git-cliff-2.7.0-x86_64-unknown-linux-gnu.tar.gz | tar xz
+            - ./git-cliff-2.7.0/git-cliff --config cliff.toml --latest --strip header
+          exports:
+            stdout: RELEASE_NOTES
+
+        # 2. AI 润色更新日志
+        - name: polish changelog with ai
+          image: cnbcool/default-build-env
+          script:
+            - |
+              cat > /tmp/ai_prompt.txt << 'PROMPT_EOF'
+              你是一个软件更新日志编辑器。请将以下 git 变更日志改写为面向普通用户的中文更新说明。
+
+              要求：
+              1. 保留版本号和日期
+              2. 用通俗易懂的语言描述每个变更，去掉技术术语
+              3. 保留 emoji 分类图标
+              4. 每条说明控制在一行以内
+              5. 输出必须以 "## " 开头（Markdown 二级标题）
+              6. 只输出改写后的更新日志，不要输出其他内容
+
+              原始变更日志：
+              PROMPT_EOF
+              printf '%s' "${RELEASE_NOTES}" >> /tmp/ai_prompt.txt
+              PROMPT=$(cat /tmp/ai_prompt.txt)
+
+              call_ai() {
+                curl -s -w "\n%{http_code}" "${AI_API_URL}/v1/messages" \
+                  -H "Content-Type: application/json" \
+                  -H "x-api-key: ${AI_API_KEY}" \
+                  -H "anthropic-version: 2023-06-01" \
+                  -d "$(jq -n \
+                    --arg model "${AI_MODEL}" \
+                    --arg prompt "${PROMPT}" \
+                    '{model: $model, max_tokens: 4096, messages: [{role: "user", content: $prompt}]}')"
+              }
+
+              RESPONSE=$(call_ai)
+              HTTP_CODE=$(echo "$RESPONSE" | tail -1)
+              BODY=$(echo "$RESPONSE" | sed '$d')
+
+              if [ "$HTTP_CODE" != "200" ]; then
+                echo "AI API 首次调用失败 (HTTP $HTTP_CODE)，3 秒后重试..." >&2
+                sleep 3
+                RESPONSE=$(call_ai)
+                HTTP_CODE=$(echo "$RESPONSE" | tail -1)
+                BODY=$(echo "$RESPONSE" | sed '$d')
+              fi
+
+              if [ "$HTTP_CODE" = "200" ]; then
+                AI_TEXT=$(echo "$BODY" | jq -r '.content[0].text // empty')
+                AI_LEN=${#AI_TEXT}
+                if echo "$AI_TEXT" | head -1 | grep -q '^## ' && [ "$AI_LEN" -le 10000 ]; then
+                  echo "$AI_TEXT"
+                  exit 0
+                fi
+                echo "AI 输出格式验证失败（长度=${AI_LEN}），使用原始日志" >&2
+              else
+                echo "AI API 调用失败 (HTTP $HTTP_CODE)，使用原始日志" >&2
+              fi
+
+              echo "${RELEASE_NOTES}"
+          exports:
+            stdout: AI_RELEASE_NOTES
+
+        # 3. 更新仓库中的 CHANGELOG.md
+        - name: update CHANGELOG.md
+          image: cnbcool/default-build-env
+          script:
+            - |
+              if [ -z "${AI_RELEASE_NOTES}" ]; then
+                echo "AI_RELEASE_NOTES 为空，跳过 CHANGELOG 更新" >&2
+                exit 0
+              fi
+
+              git config user.name "CNB Bot"
+              git config user.email "bot@cnb.cool"
+
+              git fetch origin main
+              git checkout -B temp-changelog origin/main
+
+              touch CHANGELOG.md
+              FIRST_HEADING=$(grep -n '^## ' CHANGELOG.md | head -1 | cut -d: -f1 || true)
+
+              if [ -n "$FIRST_HEADING" ]; then
+                head -n $((FIRST_HEADING - 1)) CHANGELOG.md > /tmp/changelog_header.md
+                tail -n +${FIRST_HEADING} CHANGELOG.md > /tmp/changelog_body.md
+
+                cat /tmp/changelog_header.md > CHANGELOG.md
+                echo "" >> CHANGELOG.md
+                printf '%s\n' "${AI_RELEASE_NOTES}" >> CHANGELOG.md
+                echo "" >> CHANGELOG.md
+                cat /tmp/changelog_body.md >> CHANGELOG.md
+              elif [ -s CHANGELOG.md ]; then
+                printf '\n%s\n' "${AI_RELEASE_NOTES}" >> CHANGELOG.md
+              else
+                printf '# 更新日志\n\n本文件由 CNB Release 流程自动维护，按版本倒序记录面向用户的更新说明。\n\n%s\n' "${AI_RELEASE_NOTES}" > CHANGELOG.md
+              fi
+
+              git add CHANGELOG.md
+              if git diff --cached --quiet; then
+                echo "CHANGELOG.md 无变更，跳过提交"
+                exit 0
+              fi
+
+              git commit -m "docs: update CHANGELOG.md for ${CNB_BRANCH}"
+              git remote set-url origin https://${GIT_USERNAME}:${GIT_ACCESS_TOKEN}@cnb.cool/dmxapi/openclaw_config
+              if ! git push origin temp-changelog:main; then
+                echo "推送 CHANGELOG.md 到 main 失败（可能存在并发冲突），跳过本次更新" >&2
+                exit 0
+              fi
+
+        # 4. 构建全平台
         - name: build all platforms
           image: golang:1.23-alpine
           script:
@@ -44,18 +162,7 @@ $:
             - GOOS=darwin  GOARCH=arm64 CGO_ENABLED=0 go build -ldflags "-s -w -X main.Version=${CNB_BRANCH}" -o dist/openclaw-config-macos-arm64 .
             - ls -lh dist/
 
-        # 2. 生成更新日志
-        - name: generate changelog
-          image: cnbcool/default-build-env
-          script:
-            - git fetch --unshallow origin || true
-            - git fetch --tags origin
-            - curl -sSL https://github.com/orhun/git-cliff/releases/download/v2.7.0/git-cliff-2.7.0-x86_64-unknown-linux-gnu.tar.gz | tar xz
-            - ./git-cliff-2.7.0/git-cliff --config cliff.toml --latest --strip header
-          exports:
-            stdout: RELEASE_NOTES
-
-        # 3. 创建 Release
+        # 5. 创建 Release
         - name: create release
           type: git:release
           options:
@@ -67,7 +174,7 @@ $:
 
               ---
 
-              ${RELEASE_NOTES}
+              ${AI_RELEASE_NOTES}
 
               ---
 
@@ -135,7 +242,7 @@ $:
 
               - [项目主页](https://cnb.cool/dmxapi/openclaw_config)
 
-        # 4. 上传附件到 Release
+        # 6. 上传附件到 Release
         - name: upload attachments
           image: cnbcool/attachments
           settings:
@@ -143,10 +250,9 @@ $:
               - "./dist/openclaw-config-*"
             ttl: 0
 
-        # 5. 清理旧版本，只保留最近3个
+        # 7. 清理旧版本，只保留最近3个
         - name: 清理旧版本
           image: docker.cnb.cool/cnb/plugins/cnbcool/release-clean:latest
           settings:
             filter: "RECENT_N=3"
             debug: false
-
