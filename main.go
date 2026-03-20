@@ -6,7 +6,7 @@ import (
 	"os"
 )
 
-var Version = "1.2.2"
+var Version = "1.2.3"
 
 func main() {
 	showVersion := flag.Bool("version", false, "显示版本信息")

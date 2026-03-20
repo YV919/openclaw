@@ -73,7 +73,7 @@ curl -fsSL https://cnb.cool/dmxapi/openclaw_config/-/git/raw/main/install.sh | e
 curl -fsSL https://cnb.cool/dmxapi/openclaw_config/-/git/raw/main/install.sh | env OPENCLAW_CONFIG_VERSION=vX.Y.Z sh
 ```
 
-将 `vX.Y.Z` 替换为目标 Release Tag，例如 `v1.2.2`。
+将 `vX.Y.Z` 替换为目标 Release Tag，例如 `v1.2.3`。
 
 > **说明**：Windows PowerShell 用户建议继续使用下方 Release 附件方式；如果你使用的是 Git Bash / MSYS / Cygwin，可直接执行上面的 `curl | sh` 命令。
 
