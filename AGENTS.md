@@ -1,7 +1,3 @@
-# AGENTS.md
-
-适用于当前仓库的 Codex 行为约束如下。
-
 - 任务完成之后，首先检查是否在 git 仓库中，如果在 git 仓库再检查 `.gitignore` 文件，把不在 `.gitignore` 的文件提交 git
 - 我的远程仓库是腾讯 CNB 代码仓库，不是 GitHub
 - 我的操作系统是 mac
