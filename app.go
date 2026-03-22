@@ -23,6 +23,19 @@ type App struct {
 	configManager *config.ConfigManager
 }
 
+type setupMode string
+
+const (
+	setupModeQuick    setupMode = "quick"
+	setupModeAdvanced setupMode = "advanced"
+)
+
+type quickSetupSnapshot struct {
+	MainAgent   config.AgentModelConfig
+	SubAgent    config.AgentModelConfig
+	NamedAgents []config.NamedAgentConfig
+}
+
 func NewApp() *App {
 	cm, err := config.NewConfigManager()
 	if err != nil {
@@ -68,7 +81,34 @@ func (a *App) Run() error {
 		fmt.Println()
 	}
 
-	// Step 1-4: 步骤导航循环（支持后退）
+	mode, err := pickSetupMode(fullCfg)
+	if err != nil {
+		return err
+	}
+
+	switch mode {
+	case setupModeQuick:
+		if err := a.runQuickSetup(fullCfg); err != nil {
+			return err
+		}
+	case setupModeAdvanced:
+		if err := a.runAdvancedSetup(fullCfg); err != nil {
+			return err
+		}
+	default:
+		return fmt.Errorf("未知配置模式: %q", mode)
+	}
+
+	// 最终写入
+	if err := a.configManager.SaveFullConfig(fullCfg); err != nil {
+		return fmt.Errorf("保存配置失败: %w", err)
+	}
+
+	printSuccess(fullCfg)
+	return nil
+}
+
+func (a *App) runAdvancedSetup(fullCfg *config.FullConfig) error {
 	var allModelOpts []huh.Option[string]
 	var allModelOptsWithNone []huh.Option[string]
 
@@ -105,12 +145,61 @@ func (a *App) Run() error {
 		}
 	}
 
-	// 最终写入
-	if err := a.configManager.SaveFullConfig(fullCfg); err != nil {
-		return fmt.Errorf("保存配置失败: %w", err)
+	return nil
+}
+
+func (a *App) runQuickSetup(fullCfg *config.FullConfig) error {
+	hadAdvanced := hasAdvancedConfig(fullCfg)
+	snapshot := prepareQuickSetup(fullCfg)
+
+	var allModelOpts []huh.Option[string]
+	var allModelOptsWithNone []huh.Option[string]
+
+	step := 1
+	for step >= 1 && step <= 3 {
+		if step == 2 {
+			allModelOpts = buildAllModelOpts(fullCfg.Providers)
+			allModelOptsWithNone = append(
+				[]huh.Option[string]{huh.NewOption("（不配置）", "")},
+				allModelOpts...,
+			)
+		}
+
+		switch step {
+		case 1:
+			if err := a.runStep1Providers(fullCfg); err != nil {
+				return err
+			}
+			step++
+		case 2:
+			back, err := a.runStep2MainAgent(fullCfg, allModelOpts, allModelOptsWithNone)
+			if err != nil {
+				return err
+			}
+			if back {
+				step--
+			} else {
+				step++
+			}
+		case 3:
+			action, err := pickQuickSetupAction(hadAdvanced)
+			if err != nil {
+				return err
+			}
+			switch action {
+			case "__back__":
+				step--
+			case "__restore__":
+				restoreQuickSetupSnapshot(fullCfg, snapshot)
+				return nil
+			case "__finish__":
+				return nil
+			default:
+				return fmt.Errorf("未知快速配置操作: %q", action)
+			}
+		}
 	}
 
-	printSuccess(fullCfg)
 	return nil
 }
 
@@ -161,6 +250,36 @@ func checkProviderDeps(providerName string, cfg *config.FullConfig) []string {
 		}
 	}
 	return deps
+}
+
+func hasAdvancedConfig(cfg *config.FullConfig) bool {
+	return cfg.SubAgent.Primary != "" || cfg.SubAgent.Fallback != "" || len(cfg.NamedAgents) > 0
+}
+
+func cloneNamedAgents(agents []config.NamedAgentConfig) []config.NamedAgentConfig {
+	if len(agents) == 0 {
+		return nil
+	}
+	cloned := make([]config.NamedAgentConfig, len(agents))
+	copy(cloned, agents)
+	return cloned
+}
+
+func prepareQuickSetup(cfg *config.FullConfig) quickSetupSnapshot {
+	snapshot := quickSetupSnapshot{
+		MainAgent:   cfg.MainAgent,
+		SubAgent:    cfg.SubAgent,
+		NamedAgents: cloneNamedAgents(cfg.NamedAgents),
+	}
+	cfg.SubAgent = config.AgentModelConfig{}
+	cfg.NamedAgents = nil
+	return snapshot
+}
+
+func restoreQuickSetupSnapshot(cfg *config.FullConfig, snapshot quickSetupSnapshot) {
+	cfg.MainAgent = snapshot.MainAgent
+	cfg.SubAgent = snapshot.SubAgent
+	cfg.NamedAgents = cloneNamedAgents(snapshot.NamedAgents)
 }
 
 // deleteProvider 删除指定 provider，删除前检查依赖并警告，确认后清空相关 NamedAgent 的模型引用
@@ -304,6 +423,73 @@ func pickProviderItemAction(name string) (string, error) {
 				huh.NewOption("编辑", "__edit__"),
 				huh.NewOption("删除", "__delete__"),
 				huh.NewOption("← 返回", "__back__"),
+			).
+			Value(&selected),
+	))
+	if err := runForm(form); err != nil {
+		if errors.Is(err, huh.ErrUserAborted) {
+			fmt.Fprintln(os.Stderr, "已取消")
+			os.Exit(0)
+		}
+		return "", err
+	}
+	return selected, nil
+}
+
+func pickSetupMode(cfg *config.FullConfig) (setupMode, error) {
+	var selected setupMode
+	form := newForm(huh.NewGroup(
+		huh.NewSelect[setupMode]().
+			Title("选择配置模式").
+			Description(setupModeDescription(cfg)).
+			Options(
+				huh.NewOption("快速配置", setupModeQuick),
+				huh.NewOption("高级配置", setupModeAdvanced),
+			).
+			Value(&selected),
+	))
+	if err := runForm(form); err != nil {
+		if errors.Is(err, huh.ErrUserAborted) {
+			fmt.Fprintln(os.Stderr, "已取消")
+			os.Exit(0)
+		}
+		return "", err
+	}
+	return selected, nil
+}
+
+func setupModeDescription(cfg *config.FullConfig) string {
+	description := "快速配置：只设置 Provider 和主模型，其他 Agent 默认继承主模型。\n高级配置：完整设置主 Agent、子 Agent 和命名 Agent。"
+	if hasAdvancedConfig(cfg) {
+		description += "\n当前检测到已有高级配置；进入快速配置后会先临时备份，稍后可恢复原样。"
+	}
+	return description
+}
+
+func quickSetupSummaryDescription(hadAdvanced bool) string {
+	lines := []string{
+		"当前快速配置只保留 Provider 和主 Agent 模型。",
+		"子 Agent / 命名 Agent 已改为默认继承主 Agent。",
+	}
+	if hadAdvanced {
+		lines = append(lines, "你之前的高级配置已临时备份，可选择恢复原样。")
+	} else {
+		lines = append(lines, "当前进入快速配置前的状态也已临时备份，可直接恢复原样。")
+	}
+	lines = append(lines, "请选择完成配置，或恢复原样。")
+	return strings.Join(lines, "\n")
+}
+
+func pickQuickSetupAction(hadAdvanced bool) (string, error) {
+	var selected string
+	form := newForm(huh.NewGroup(
+		huh.NewSelect[string]().
+			Title("快速配置确认").
+			Description(quickSetupSummaryDescription(hadAdvanced)).
+			Options(
+				huh.NewOption("完成配置", "__finish__"),
+				huh.NewOption("恢复原样", "__restore__"),
+				huh.NewOption("← 返回上一步", "__back__"),
 			).
 			Value(&selected),
 	))

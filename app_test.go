@@ -9,6 +9,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/huh"
+	"openclaw_config/internal/config"
 )
 
 // suppressStdout 将 os.Stdout 重定向到 pipe，用于抑制测试中的警告输出
@@ -525,6 +526,120 @@ func TestProviderModelListAvailableFieldHeightClampsToMinimum(t *testing.T) {
 	want := providerModelListTitleLines + providerModelListBaseDescriptionLines + providerModelListOverflowLines + 1
 	if got != want {
 		t.Fatalf("available height = %d, want %d", got, want)
+	}
+}
+
+func TestHasAdvancedConfigDetectsSubOrNamedOverrides(t *testing.T) {
+	tests := []struct {
+		name string
+		cfg  config.FullConfig
+		want bool
+	}{
+		{
+			name: "仅主模型不算高级配置",
+			cfg: config.FullConfig{
+				MainAgent: config.AgentModelConfig{Primary: "demo/gpt-5.2"},
+			},
+			want: false,
+		},
+		{
+			name: "子 Agent 单独配置算高级配置",
+			cfg: config.FullConfig{
+				MainAgent: config.AgentModelConfig{Primary: "demo/gpt-5.2"},
+				SubAgent:  config.AgentModelConfig{Primary: "demo/gpt-5.2-mini"},
+			},
+			want: true,
+		},
+		{
+			name: "命名 Agent 单独配置算高级配置",
+			cfg: config.FullConfig{
+				MainAgent: config.AgentModelConfig{Primary: "demo/gpt-5.2"},
+				NamedAgents: []config.NamedAgentConfig{
+					{ID: "coder", Model: config.AgentModelConfig{Primary: "demo/gpt-5.2-mini"}},
+				},
+			},
+			want: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := hasAdvancedConfig(&tt.cfg); got != tt.want {
+				t.Fatalf("hasAdvancedConfig() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestPrepareQuickSetupBacksUpAndClearsAdvancedConfig(t *testing.T) {
+	cfg := &config.FullConfig{
+		MainAgent: config.AgentModelConfig{Primary: "demo/gpt-5.2", Fallback: "demo/gpt-4.1"},
+		SubAgent:  config.AgentModelConfig{Primary: "demo/gpt-5.2-mini", Fallback: "demo/gpt-4.1-mini"},
+		NamedAgents: []config.NamedAgentConfig{
+			{ID: "coder", Model: config.AgentModelConfig{Primary: "demo/gpt-5.2-codex"}},
+		},
+	}
+
+	snapshot := prepareQuickSetup(cfg)
+
+	if !reflect.DeepEqual(snapshot.MainAgent, config.AgentModelConfig{Primary: "demo/gpt-5.2", Fallback: "demo/gpt-4.1"}) {
+		t.Fatalf("snapshot.MainAgent = %+v", snapshot.MainAgent)
+	}
+	if !reflect.DeepEqual(snapshot.SubAgent, config.AgentModelConfig{Primary: "demo/gpt-5.2-mini", Fallback: "demo/gpt-4.1-mini"}) {
+		t.Fatalf("snapshot.SubAgent = %+v", snapshot.SubAgent)
+	}
+	if len(snapshot.NamedAgents) != 1 || snapshot.NamedAgents[0].ID != "coder" {
+		t.Fatalf("snapshot.NamedAgents = %+v", snapshot.NamedAgents)
+	}
+	if !reflect.DeepEqual(cfg.SubAgent, config.AgentModelConfig{}) {
+		t.Fatalf("cfg.SubAgent = %+v, want empty", cfg.SubAgent)
+	}
+	if len(cfg.NamedAgents) != 0 {
+		t.Fatalf("cfg.NamedAgents = %+v, want empty", cfg.NamedAgents)
+	}
+	if cfg.MainAgent.Primary != "demo/gpt-5.2" {
+		t.Fatalf("cfg.MainAgent.Primary = %q, want unchanged", cfg.MainAgent.Primary)
+	}
+}
+
+func TestRestoreQuickSetupSnapshotRestoresMainSubAndNamedAgents(t *testing.T) {
+	cfg := &config.FullConfig{
+		MainAgent: config.AgentModelConfig{Primary: "demo/new-main"},
+	}
+	snapshot := quickSetupSnapshot{
+		MainAgent: config.AgentModelConfig{Primary: "demo/original-main", Fallback: "demo/original-fallback"},
+		SubAgent:  config.AgentModelConfig{Primary: "demo/original-sub"},
+		NamedAgents: []config.NamedAgentConfig{
+			{ID: "coder", Model: config.AgentModelConfig{Primary: "demo/original-coder"}},
+		},
+	}
+
+	restoreQuickSetupSnapshot(cfg, snapshot)
+
+	if !reflect.DeepEqual(cfg.MainAgent, snapshot.MainAgent) {
+		t.Fatalf("cfg.MainAgent = %+v, want %+v", cfg.MainAgent, snapshot.MainAgent)
+	}
+	if !reflect.DeepEqual(cfg.SubAgent, snapshot.SubAgent) {
+		t.Fatalf("cfg.SubAgent = %+v, want %+v", cfg.SubAgent, snapshot.SubAgent)
+	}
+	if !reflect.DeepEqual(cfg.NamedAgents, snapshot.NamedAgents) {
+		t.Fatalf("cfg.NamedAgents = %+v, want %+v", cfg.NamedAgents, snapshot.NamedAgents)
+	}
+}
+
+func TestQuickSetupSummaryDescriptionMentionsInheritanceAndRestore(t *testing.T) {
+	got := quickSetupSummaryDescription(true)
+	wants := []string{
+		"已临时备份",
+		"默认继承主 Agent",
+		"完成配置",
+		"恢复原样",
+	}
+
+	for _, want := range wants {
+		if !strings.Contains(got, want) {
+			t.Fatalf("quickSetupSummaryDescription() = %q, want contain %q", got, want)
+		}
 	}
 }
 
