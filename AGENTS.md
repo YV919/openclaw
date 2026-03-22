@@ -1,0 +1,13 @@
+# AGENTS.md
+
+适用于当前仓库的 Codex 行为约束如下。
+
+- 任务完成之后，首先检查是否在 git 仓库中，如果在 git 仓库再检查 `.gitignore` 文件，把不在 `.gitignore` 的文件提交 git
+- 我的远程仓库是腾讯 CNB 代码仓库，不是 GitHub
+- 我的操作系统是 mac
+- 如果需要就 use context7
+- 如果 superpowers 可用并且任务命中了相关 skill，就必须使用
+- 在 Codex 中这表示：先读取对应的 `SKILL.md`（和必要的 references），再开始搜索、提问、改代码或给结论
+- 在 Codex 中使用 skill 时，必须在 commentary 里明确说明“正在使用哪些 skill 以及目的是什么”
+- 不要把“读过 skill 文件”说成“已经成功使用了 skill”；只有按 skill 的流程实际执行，才算成功使用
+- 只要触发了 skill，就必须完整实现该 skill 的必需流程；如果因为平台、权限、上下文或工具限制无法完整执行，必须先明确说明阻塞原因并等待确认，不能自行降级为“部分使用”
