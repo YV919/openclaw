@@ -31,6 +31,7 @@ const (
 )
 
 type quickSetupSnapshot struct {
+	Providers   []config.ProviderConfig
 	MainAgent   config.AgentModelConfig
 	SubAgent    config.AgentModelConfig
 	NamedAgents []config.NamedAgentConfig
@@ -151,28 +152,23 @@ func (a *App) runAdvancedSetup(fullCfg *config.FullConfig) error {
 func (a *App) runQuickSetup(fullCfg *config.FullConfig) error {
 	hadAdvanced := hasAdvancedConfig(fullCfg)
 	snapshot := prepareQuickSetup(fullCfg)
-
-	var allModelOpts []huh.Option[string]
-	var allModelOptsWithNone []huh.Option[string]
+	provider := config.ProviderConfig{}
+	if len(fullCfg.Providers) > 0 {
+		provider = fullCfg.Providers[0]
+	}
 
 	step := 1
 	for step >= 1 && step <= 3 {
-		if step == 2 {
-			allModelOpts = buildAllModelOpts(fullCfg.Providers)
-			allModelOptsWithNone = append(
-				[]huh.Option[string]{huh.NewOption("（不配置）", "")},
-				allModelOpts...,
-			)
-		}
-
 		switch step {
 		case 1:
-			if err := a.runStep1Providers(fullCfg); err != nil {
+			selectedProvider, _, err := a.runQuickStep1Provider(fullCfg)
+			if err != nil {
 				return err
 			}
+			provider = selectedProvider
 			step++
 		case 2:
-			back, err := a.runStep2MainAgent(fullCfg, allModelOpts, allModelOptsWithNone)
+			back, err := a.runQuickStep2PrimaryModel(provider, fullCfg)
 			if err != nil {
 				return err
 			}
@@ -201,6 +197,59 @@ func (a *App) runQuickSetup(fullCfg *config.FullConfig) error {
 	}
 
 	return nil
+}
+
+func (a *App) runQuickStep1Provider(fullCfg *config.FullConfig) (config.ProviderConfig, bool, error) {
+	current := config.ProviderConfig{}
+	if len(fullCfg.Providers) > 0 {
+		current = fullCfg.Providers[0]
+	}
+
+	provider, cancelled, err := editProvider(current)
+	if err != nil {
+		return config.ProviderConfig{}, false, err
+	}
+	if cancelled {
+		fmt.Fprintln(os.Stderr, "已取消")
+		os.Exit(0)
+	}
+
+	applyQuickProviderSelection(fullCfg, provider)
+	return provider, false, nil
+}
+
+func (a *App) runQuickStep2PrimaryModel(provider config.ProviderConfig, fullCfg *config.FullConfig) (bool, error) {
+	opts := buildQuickPrimaryModelOptions(provider)
+	if len(opts) == 0 {
+		return true, nil
+	}
+
+	primary := strings.TrimPrefix(fullCfg.MainAgent.Primary, provider.Name+"/")
+	if !containsOptValue(opts, primary) && len(opts) > 0 {
+		primary = opts[0].Value
+	}
+
+	optsWithBack := append(append([]huh.Option[string](nil), opts...), huh.NewOption("← 返回上一步", "__back__"))
+	form := newForm(huh.NewGroup(
+		huh.NewSelect[string]().
+			Title("主 Agent 模型").
+			Description("只从当前 Provider 的 models 中选择一个主模型").
+			Options(optsWithBack...).
+			Value(&primary),
+	))
+	if err := runForm(form); err != nil {
+		if errors.Is(err, huh.ErrUserAborted) {
+			fmt.Fprintln(os.Stderr, "已取消")
+			os.Exit(0)
+		}
+		return false, err
+	}
+	if primary == "__back__" {
+		return true, nil
+	}
+
+	applyQuickPrimaryModel(fullCfg, provider.Name, primary)
+	return false, nil
 }
 
 // buildAllModelOpts 从所有 provider 构建完整模型选项列表（格式 "provider/model"）
@@ -252,6 +301,20 @@ func checkProviderDeps(providerName string, cfg *config.FullConfig) []string {
 	return deps
 }
 
+func cloneProviders(providers []config.ProviderConfig) []config.ProviderConfig {
+	if len(providers) == 0 {
+		return nil
+	}
+	cloned := make([]config.ProviderConfig, len(providers))
+	for i, provider := range providers {
+		cloned[i] = provider
+		if len(provider.Models) > 0 {
+			cloned[i].Models = append([]string(nil), provider.Models...)
+		}
+	}
+	return cloned
+}
+
 func hasAdvancedConfig(cfg *config.FullConfig) bool {
 	return cfg.SubAgent.Primary != "" || cfg.SubAgent.Fallback != "" || len(cfg.NamedAgents) > 0
 }
@@ -267,6 +330,7 @@ func cloneNamedAgents(agents []config.NamedAgentConfig) []config.NamedAgentConfi
 
 func prepareQuickSetup(cfg *config.FullConfig) quickSetupSnapshot {
 	snapshot := quickSetupSnapshot{
+		Providers:   cloneProviders(cfg.Providers),
 		MainAgent:   cfg.MainAgent,
 		SubAgent:    cfg.SubAgent,
 		NamedAgents: cloneNamedAgents(cfg.NamedAgents),
@@ -277,9 +341,33 @@ func prepareQuickSetup(cfg *config.FullConfig) quickSetupSnapshot {
 }
 
 func restoreQuickSetupSnapshot(cfg *config.FullConfig, snapshot quickSetupSnapshot) {
+	cfg.Providers = cloneProviders(snapshot.Providers)
 	cfg.MainAgent = snapshot.MainAgent
 	cfg.SubAgent = snapshot.SubAgent
 	cfg.NamedAgents = cloneNamedAgents(snapshot.NamedAgents)
+}
+
+func applyQuickProviderSelection(cfg *config.FullConfig, provider config.ProviderConfig) {
+	cfg.Providers = []config.ProviderConfig{provider}
+}
+
+func applyQuickPrimaryModel(cfg *config.FullConfig, providerName string, model string) {
+	cfg.MainAgent.Primary = providerName + "/" + model
+	cfg.MainAgent.Fallback = ""
+	cfg.SubAgent = config.AgentModelConfig{}
+	cfg.NamedAgents = nil
+}
+
+func buildQuickPrimaryModelOptions(provider config.ProviderConfig) []huh.Option[string] {
+	opts := make([]huh.Option[string], 0, len(provider.Models))
+	for _, model := range provider.Models {
+		trimmed := strings.TrimSpace(model)
+		if trimmed == "" {
+			continue
+		}
+		opts = append(opts, huh.NewOption(trimmed, trimmed))
+	}
+	return opts
 }
 
 // deleteProvider 删除指定 provider，删除前检查依赖并警告，确认后清空相关 NamedAgent 的模型引用
@@ -468,7 +556,7 @@ func setupModeDescription(cfg *config.FullConfig) string {
 
 func quickSetupSummaryDescription(hadAdvanced bool) string {
 	lines := []string{
-		"当前快速配置只保留 Provider 和主 Agent 模型。",
+		"当前快速配置最终只保留 1 个 Provider，并只设置 1 个主 Agent 模型。",
 		"子 Agent / 命名 Agent 已改为默认继承主 Agent。",
 	}
 	if hadAdvanced {

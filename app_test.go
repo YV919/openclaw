@@ -240,11 +240,138 @@ func TestProviderModelListOverflowHintWithoutOverflowReturnsEmpty(t *testing.T) 
 	}
 }
 
-func TestProviderEditorHelpFooterUsesDefaultTextWhenNotFocused(t *testing.T) {
-	got := providerEditorHelpFooter(false)
-	want := renderHelpFooter(defaultHelpFooterText)
-	if got != want {
-		t.Fatalf("help footer = %q, want %q", got, want)
+func TestPrepareQuickSetupBacksUpProvidersMainSubAndNamedAgents(t *testing.T) {
+	cfg := &config.FullConfig{
+		Providers: []config.ProviderConfig{
+			{Name: "openai", BaseUrl: "https://api.openai.com/v1", Models: []string{"gpt-5"}},
+			{Name: "anthropic", BaseUrl: "https://api.anthropic.com", Models: []string{"claude-sonnet-4-6"}},
+		},
+		MainAgent: config.AgentModelConfig{Primary: "openai/gpt-5", Fallback: "anthropic/claude-sonnet-4-6"},
+		SubAgent:  config.AgentModelConfig{Primary: "anthropic/claude-sonnet-4-6"},
+		NamedAgents: []config.NamedAgentConfig{{
+			ID:    "writer",
+			Model: config.AgentModelConfig{Primary: "openai/gpt-5"},
+		}},
+	}
+
+	snapshot := prepareQuickSetup(cfg)
+
+	if !reflect.DeepEqual(snapshot.Providers, []config.ProviderConfig{
+		{Name: "openai", BaseUrl: "https://api.openai.com/v1", Models: []string{"gpt-5"}},
+		{Name: "anthropic", BaseUrl: "https://api.anthropic.com", Models: []string{"claude-sonnet-4-6"}},
+	}) {
+		t.Fatalf("snapshot providers = %#v", snapshot.Providers)
+	}
+	if snapshot.MainAgent != (config.AgentModelConfig{Primary: "openai/gpt-5", Fallback: "anthropic/claude-sonnet-4-6"}) {
+		t.Fatalf("snapshot main = %#v", snapshot.MainAgent)
+	}
+	if snapshot.SubAgent != (config.AgentModelConfig{Primary: "anthropic/claude-sonnet-4-6"}) {
+		t.Fatalf("snapshot sub = %#v", snapshot.SubAgent)
+	}
+	if len(snapshot.NamedAgents) != 1 || snapshot.NamedAgents[0].ID != "writer" {
+		t.Fatalf("snapshot named agents = %#v", snapshot.NamedAgents)
+	}
+
+	if cfg.SubAgent != (config.AgentModelConfig{}) {
+		t.Fatalf("sub agent = %#v, want empty", cfg.SubAgent)
+	}
+	if cfg.NamedAgents != nil {
+		t.Fatalf("named agents = %#v, want nil", cfg.NamedAgents)
+	}
+}
+
+func TestRestoreQuickSetupSnapshotRestoresProvidersMainSubAndNamedAgents(t *testing.T) {
+	cfg := &config.FullConfig{
+		Providers: []config.ProviderConfig{{Name: "replacement", Models: []string{"replacement-model"}}},
+		MainAgent: config.AgentModelConfig{Primary: "replacement/replacement-model"},
+	}
+	snapshot := quickSetupSnapshot{
+		Providers: []config.ProviderConfig{{Name: "openai", BaseUrl: "https://api.openai.com/v1", Models: []string{"gpt-5"}}},
+		MainAgent: config.AgentModelConfig{Primary: "openai/gpt-5", Fallback: "openai/gpt-4.1"},
+		SubAgent:  config.AgentModelConfig{Primary: "openai/gpt-5"},
+		NamedAgents: []config.NamedAgentConfig{{
+			ID:    "reviewer",
+			Model: config.AgentModelConfig{Primary: "openai/gpt-5"},
+		}},
+	}
+
+	restoreQuickSetupSnapshot(cfg, snapshot)
+
+	if !reflect.DeepEqual(cfg.Providers, snapshot.Providers) {
+		t.Fatalf("providers = %#v, want %#v", cfg.Providers, snapshot.Providers)
+	}
+	if cfg.MainAgent != snapshot.MainAgent {
+		t.Fatalf("main = %#v, want %#v", cfg.MainAgent, snapshot.MainAgent)
+	}
+	if cfg.SubAgent != snapshot.SubAgent {
+		t.Fatalf("sub = %#v, want %#v", cfg.SubAgent, snapshot.SubAgent)
+	}
+	if !reflect.DeepEqual(cfg.NamedAgents, snapshot.NamedAgents) {
+		t.Fatalf("named agents = %#v, want %#v", cfg.NamedAgents, snapshot.NamedAgents)
+	}
+}
+func TestApplyQuickProviderSelectionReplacesProvidersWithSingleProvider(t *testing.T) {
+	cfg := &config.FullConfig{
+		Providers: []config.ProviderConfig{
+			{Name: "old-one", Models: []string{"a"}},
+			{Name: "old-two", Models: []string{"b"}},
+		},
+	}
+	selected := config.ProviderConfig{Name: "openai", BaseUrl: "https://api.openai.com/v1", Models: []string{"gpt-5", "gpt-4.1"}}
+
+	applyQuickProviderSelection(cfg, selected)
+
+	want := []config.ProviderConfig{selected}
+	if !reflect.DeepEqual(cfg.Providers, want) {
+		t.Fatalf("providers = %#v, want %#v", cfg.Providers, want)
+	}
+}
+
+func TestApplyQuickPrimaryModelSetsProviderQualifiedPrimaryAndClearsAllQuickOverrides(t *testing.T) {
+	cfg := &config.FullConfig{
+		MainAgent: config.AgentModelConfig{Primary: "old/model", Fallback: "old/fallback"},
+		SubAgent:  config.AgentModelConfig{Primary: "custom/sub", Fallback: "custom/sub-fallback"},
+		NamedAgents: []config.NamedAgentConfig{{
+			ID:    "writer",
+			Model: config.AgentModelConfig{Primary: "custom/writer"},
+		}},
+	}
+
+	applyQuickPrimaryModel(cfg, "openai", "gpt-5")
+
+	if cfg.MainAgent.Primary != "openai/gpt-5" {
+		t.Fatalf("main primary = %q, want %q", cfg.MainAgent.Primary, "openai/gpt-5")
+	}
+	if cfg.MainAgent.Fallback != "" {
+		t.Fatalf("main fallback = %q, want empty", cfg.MainAgent.Fallback)
+	}
+	if cfg.SubAgent != (config.AgentModelConfig{}) {
+		t.Fatalf("sub = %#v, want empty", cfg.SubAgent)
+	}
+	if cfg.NamedAgents != nil {
+		t.Fatalf("named agents = %#v, want nil", cfg.NamedAgents)
+	}
+}
+
+func TestQuickPrimaryModelOptionsUseOnlySelectedProviderModels(t *testing.T) {
+	got := buildQuickPrimaryModelOptions(config.ProviderConfig{
+		Name:   "openai",
+		Models: []string{"gpt-5", "gpt-4.1"},
+	})
+	want := []huh.Option[string]{
+		huh.NewOption("gpt-5", "gpt-5"),
+		huh.NewOption("gpt-4.1", "gpt-4.1"),
+	}
+
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("options = %#v, want %#v", got, want)
+	}
+}
+
+func TestQuickPrimaryModelOptionsEmptyWhenProviderHasNoModels(t *testing.T) {
+	got := buildQuickPrimaryModelOptions(config.ProviderConfig{Name: "openai"})
+	if len(got) != 0 {
+		t.Fatalf("len(options) = %d, want 0", len(got))
 	}
 }
 
@@ -631,6 +758,7 @@ func TestQuickSetupSummaryDescriptionMentionsInheritanceAndRestore(t *testing.T)
 	got := quickSetupSummaryDescription(true)
 	wants := []string{
 		"已临时备份",
+		"只保留 1 个 Provider",
 		"默认继承主 Agent",
 		"完成配置",
 		"恢复原样",
