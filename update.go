@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-const defaultReleasesURL = "https://cnb.cool/dmxapi/openclaw_config/-/releases"
+const defaultReleasesURL = "https://github.com/YV919/openclaw/releases"
 
 var releaseTagPattern = regexp.MustCompile(`/releases/tag/(v?\d+\.\d+\.\d+)`)
 

@@ -146,7 +146,7 @@ jobs:
 
             ### 🔗 相关链接
 
-            - [项目主页](https://cnb.cool/dmxapi/openclaw_config)
+            - [项目主页](https://github.com/YV919/openclaw)
           files: artifacts/*
           draft: false
           prerelease: false
