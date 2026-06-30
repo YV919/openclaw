@@ -18,7 +18,11 @@ func main() {
 		os.Exit(0)
 	}
 
-	app := NewApp()
+	app, err := NewApp()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "错误: %v\n", err)
+		os.Exit(1)
+	}
 	if err := app.Run(); err != nil {
 		if errors.Is(err, ErrUserCancelled) {
 			os.Exit(0)

@@ -26,23 +26,15 @@ const (
 	setupModeAdvanced setupMode = "advanced"
 )
 
-func NewApp() *App {
+func NewApp() (*App, error) {
 	cm, err := config.NewConfigManager()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "警告: 初始化配置管理器失败: %v\n", err)
+		return nil, fmt.Errorf("初始化配置管理器失败: %w", err)
 	}
-	return &App{configManager: cm}
+	return &App{configManager: cm}, nil
 }
 
 func (a *App) Run() error {
-	if a.configManager == nil {
-		cm, err := config.NewConfigManager()
-		if err != nil {
-			return fmt.Errorf("初始化配置管理器失败: %w", err)
-		}
-		a.configManager = cm
-	}
-
 	// 加载现有配置（含兼容性迁移）
 	fullCfg, fixLogs, err := a.configManager.LoadFullConfig()
 	if err != nil {

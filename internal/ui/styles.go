@@ -7,6 +7,47 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
+// ── ANSI 颜色常量（对齐 hermes 风格）──
+
+const (
+	CReset   = "\033[0m"
+	CRed     = "\033[91m"
+	CGreen   = "\033[92m"
+	CYellow  = "\033[93m"
+	CCyan    = "\033[96m"
+	CCyanMid = "\033[36m"
+	CBlue    = "\033[94m"
+	CMagenta = "\033[95m"
+	CGray    = "\033[90m"
+	CBold    = "\033[1m"
+	CDim     = "\033[2m"
+)
+
+// ── 图标（对齐 hermes 风格）──
+
+const (
+	IconOK    = "✔"
+	IconErr   = "✘"
+	IconWarn  = "⚠"
+	IconInfo  = "→"
+	IconTip   = "◆"
+	IconArrow = "❯"
+)
+
+// ── lipgloss 便捷样式 ──
+
+var (
+	Bold     = lipgloss.NewStyle().Bold(true)
+	Green    = lipgloss.NewStyle().Foreground(lipgloss.Color("10"))
+	Yellow   = lipgloss.NewStyle().Foreground(lipgloss.Color("11"))
+	Cyan     = lipgloss.NewStyle().Foreground(lipgloss.Color("14"))
+	Magenta  = lipgloss.NewStyle().Foreground(lipgloss.Color("13"))
+	GrayDim  = lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
+	BoldCyan = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("14"))
+)
+
+// ── 帮助栏 ──
+
 const DefaultHelpFooterText = "ctrl+c 取消  ·  shift+tab 上一项  ·  enter 确认"
 
 const ProviderModelListFocusedHelpFooterText = "ctrl+c 取消  ·  shift+tab 上一项  ·  空格/x 切换选中  ·  ↑↓ 移动  ·  enter 确认"
