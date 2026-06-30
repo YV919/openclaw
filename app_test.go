@@ -10,6 +10,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/huh"
 	"openclaw_config/internal/config"
+	"openclaw_config/internal/ui"
 )
 
 // suppressStdout 将 os.Stdout 重定向到 pipe，用于抑制测试中的警告输出
@@ -24,25 +25,25 @@ func suppressStdout(f func()) {
 }
 
 func TestProviderManagementDescriptionUsesFormatReminderCopy(t *testing.T) {
-	got := providerManagementDescription()
+	got := ui.ProviderManagementDescription()
 	want := "同一 Provider 只配置一种模型格式。\nOpenAI 兼容、GPT-5 系列、Anthropic、Gemini 请分开配置。"
 
 	if got != want {
-		t.Fatalf("providerManagementDescription() = %q, want %q", got, want)
+		t.Fatalf("ui.ProviderManagementDescription() = %q, want %q", got, want)
 	}
 }
 
 func TestSavedConfigNoticeDescriptionMatchesHybridReloadGuidance(t *testing.T) {
-	got := savedConfigNoticeDescription()
+	got := ui.SavedConfigNoticeDescription()
 	want := "✓ 配置已保存。默认在 OpenClaw 的 hybrid reload 下，大多数 agent/model 变更会自动生效。\n若修改 gateway/plugins/discovery/canvasHost，请执行 openclaw gateway restart。"
 
 	if got != want {
-		t.Fatalf("savedConfigNoticeDescription() = %q, want %q", got, want)
+		t.Fatalf("ui.SavedConfigNoticeDescription() = %q, want %q", got, want)
 	}
 }
 
 func TestSuccessDismissFieldDoesNotSkip(t *testing.T) {
-	field := newSuccessDismissField("测试说明")
+	field := ui.NewSuccessDismissField("测试说明")
 
 	if field.Skip() {
 		t.Fatal("success dismiss field should block until Enter")
@@ -50,7 +51,7 @@ func TestSuccessDismissFieldDoesNotSkip(t *testing.T) {
 }
 
 func TestSuccessDismissFieldIgnoresNonSubmitKeys(t *testing.T) {
-	field := newSuccessDismissField("测试说明")
+	field := ui.NewSuccessDismissField("测试说明")
 
 	_, cmd := field.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}})
 	if cmd != nil {
@@ -90,7 +91,7 @@ func TestDetectFormatFromModels(t *testing.T) {
 }
 
 func TestPrepareFormForRunSetsQuitCommands(t *testing.T) {
-	form := prepareFormForRun(newForm(huh.NewGroup(
+	form := ui.PrepareFormForRun(ui.NewForm(huh.NewGroup(
 		huh.NewNote().
 			Title("提示").
 			Description("测试表单").
@@ -174,7 +175,7 @@ func TestProviderModelFinalSelectionIsOnlySaveSource(t *testing.T) {
 }
 
 func TestProviderModelListThemeUsesAsciiCheckboxPrefixes(t *testing.T) {
-	theme := providerModelListTheme()
+	theme := ui.ProviderModelListTheme()
 	if theme.Focused.SelectedPrefix.String() != "[✓] " {
 		t.Fatalf("focused selected prefix = %q, want %q", theme.Focused.SelectedPrefix.String(), "[✓] ")
 	}
@@ -190,12 +191,12 @@ func TestProviderModelListThemeUsesAsciiCheckboxPrefixes(t *testing.T) {
 }
 
 func TestComputeProviderModelListPresentationShowsAllOptionsWhenSpaceAllows(t *testing.T) {
-	got := computeProviderModelListPresentation(12, 4)
-	want := providerModelListPresentation{
-		fieldHeight:      6,
-		visibleRows:      4,
-		hiddenCount:      0,
-		showOverflowHint: false,
+	got := ui.ComputeProviderModelListPresentation(12, 4)
+	want := ui.ProviderModelListPresentation{
+		FieldHeight:      6,
+		VisibleRows:      4,
+		HiddenCount:      0,
+		ShowOverflowHint: false,
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("presentation = %+v, want %+v", got, want)
@@ -203,12 +204,12 @@ func TestComputeProviderModelListPresentationShowsAllOptionsWhenSpaceAllows(t *t
 }
 
 func TestComputeProviderModelListPresentationReservesOverflowHintLine(t *testing.T) {
-	got := computeProviderModelListPresentation(8, 10)
-	want := providerModelListPresentation{
-		fieldHeight:      7,
-		visibleRows:      5,
-		hiddenCount:      5,
-		showOverflowHint: true,
+	got := ui.ComputeProviderModelListPresentation(8, 10)
+	want := ui.ProviderModelListPresentation{
+		FieldHeight:      7,
+		VisibleRows:      5,
+		HiddenCount:      5,
+		ShowOverflowHint: true,
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("presentation = %+v, want %+v", got, want)
@@ -216,11 +217,11 @@ func TestComputeProviderModelListPresentationReservesOverflowHintLine(t *testing
 }
 
 func TestProviderModelListOverflowHintWithOverflowShowsRemainingCount(t *testing.T) {
-	got := providerModelListOverflowHint(providerModelListPresentation{
-		fieldHeight:      7,
-		visibleRows:      5,
-		hiddenCount:      5,
-		showOverflowHint: true,
+	got := ui.ProviderModelListOverflowHint(ui.ProviderModelListPresentation{
+		FieldHeight:      7,
+		VisibleRows:      5,
+		HiddenCount:      5,
+		ShowOverflowHint: true,
 	})
 	want := "↓ 更多模型（还有 5 项，继续向下查看）"
 	if got != want {
@@ -229,11 +230,11 @@ func TestProviderModelListOverflowHintWithOverflowShowsRemainingCount(t *testing
 }
 
 func TestProviderModelListOverflowHintWithoutOverflowReturnsEmpty(t *testing.T) {
-	got := providerModelListOverflowHint(providerModelListPresentation{
-		fieldHeight:      6,
-		visibleRows:      4,
-		hiddenCount:      0,
-		showOverflowHint: false,
+	got := ui.ProviderModelListOverflowHint(ui.ProviderModelListPresentation{
+		FieldHeight:      6,
+		VisibleRows:      4,
+		HiddenCount:      0,
+		ShowOverflowHint: false,
 	})
 	if got != "" {
 		t.Fatalf("overflow hint = %q, want empty", got)
@@ -376,8 +377,8 @@ func TestQuickPrimaryModelOptionsEmptyWhenProviderHasNoModels(t *testing.T) {
 }
 
 func TestProviderEditorHelpFooterUsesExpandedTextWhenModelListFocused(t *testing.T) {
-	got := providerEditorHelpFooter(true)
-	want := renderHelpFooter("ctrl+c 取消  ·  shift+tab 上一项  ·  空格/x 切换选中  ·  ↑↓ 移动  ·  enter 确认")
+	got := ui.ProviderEditorHelpFooter(true)
+	want := ui.RenderHelpFooter("ctrl+c 取消  ·  shift+tab 上一项  ·  空格/x 切换选中  ·  ↑↓ 移动  ·  enter 确认")
 	if got != want {
 		t.Fatalf("help footer = %q, want %q", got, want)
 	}
@@ -385,10 +386,10 @@ func TestProviderEditorHelpFooterUsesExpandedTextWhenModelListFocused(t *testing
 
 func TestProviderModelListFieldViewAppendsOverflowHintBelowOptions(t *testing.T) {
 	var selected []string
-	field := newProviderModelListField(
+	field := ui.NewProviderModelListField(
 		huh.NewMultiSelect[string]().
 			Title("模型列表").
-			Description(providerModelListBaseDescription).
+			Description(ui.ProviderModelListBaseDescription).
 			Options(
 				huh.NewOption("a", "a"),
 				huh.NewOption("b", "b"),
@@ -402,11 +403,11 @@ func TestProviderModelListFieldViewAppendsOverflowHintBelowOptions(t *testing.T)
 				huh.NewOption("j", "j"),
 			).
 			Value(&selected).
-			WithTheme(providerModelListTheme()).(*huh.MultiSelect[string]),
+			WithTheme(ui.ProviderModelListTheme()).(*huh.MultiSelect[string]),
 		func(int) int { return 8 },
 		func() int { return 10 },
 	)
-	field.lastWindowHeight = 8
+	field.LastWindowHeight = 8
 
 	got := field.View()
 	want := "↓ 更多模型（还有 5 项，继续向下查看）"
@@ -417,10 +418,10 @@ func TestProviderModelListFieldViewAppendsOverflowHintBelowOptions(t *testing.T)
 
 func TestProviderModelListFieldViewHidesOverflowHintAtBottom(t *testing.T) {
 	var selected []string
-	field := newProviderModelListField(
+	field := ui.NewProviderModelListField(
 		huh.NewMultiSelect[string]().
 			Title("模型列表").
-			Description(providerModelListBaseDescription).
+			Description(ui.ProviderModelListBaseDescription).
 			Options(
 				huh.NewOption("a", "a"),
 				huh.NewOption("b", "b"),
@@ -434,18 +435,18 @@ func TestProviderModelListFieldViewHidesOverflowHintAtBottom(t *testing.T) {
 				huh.NewOption("j", "j"),
 			).
 			Value(&selected).
-			WithTheme(providerModelListTheme()).(*huh.MultiSelect[string]),
+			WithTheme(ui.ProviderModelListTheme()).(*huh.MultiSelect[string]),
 		func(int) int { return 8 },
 		func() int { return 10 },
 	)
 	field.WithKeyMap(huh.NewDefaultKeyMap())
 
 	model, _ := field.Update(tea.WindowSizeMsg{Height: 8, Width: 80})
-	field = model.(*providerModelListField)
+	field = model.(*ui.ProviderModelListField)
 	_ = field.View()
 	for range 9 {
 		model, _ = field.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
-		field = model.(*providerModelListField)
+		field = model.(*ui.ProviderModelListField)
 		_ = field.View()
 	}
 
@@ -457,13 +458,13 @@ func TestProviderModelListFieldViewHidesOverflowHintAtBottom(t *testing.T) {
 
 func TestProviderModelListFieldFocusStateTracksFocusAndBlur(t *testing.T) {
 	var selected []string
-	field := newProviderModelListField(
+	field := ui.NewProviderModelListField(
 		huh.NewMultiSelect[string]().
 			Title("模型列表").
-			Description(providerModelListBaseDescription).
+			Description(ui.ProviderModelListBaseDescription).
 			Options(huh.NewOption("a", "a")).
 			Value(&selected).
-			WithTheme(providerModelListTheme()).(*huh.MultiSelect[string]),
+			WithTheme(ui.ProviderModelListTheme()).(*huh.MultiSelect[string]),
 		func(int) int { return 6 },
 		func() int { return 1 },
 	)
@@ -482,8 +483,8 @@ func TestProviderModelListFieldFocusStateTracksFocusAndBlur(t *testing.T) {
 }
 
 func TestProviderEditorHelpFooterSwitchesForFocusedModelList(t *testing.T) {
-	defaultFooter := providerEditorHelpFooter(false)
-	focusedFooter := providerEditorHelpFooter(true)
+	defaultFooter := ui.ProviderEditorHelpFooter(false)
+	focusedFooter := ui.ProviderEditorHelpFooter(true)
 
 	if !strings.Contains(defaultFooter, "ctrl+c 取消") {
 		t.Fatalf("default footer = %q, want cancel help", defaultFooter)
@@ -498,15 +499,15 @@ func TestProviderEditorHelpFooterSwitchesForFocusedModelList(t *testing.T) {
 }
 
 func TestFormModelViewUsesCustomHelpFooterWhenProvided(t *testing.T) {
-	form := prepareFormForRun(newForm(huh.NewGroup(
+	form := ui.PrepareFormForRun(ui.NewForm(huh.NewGroup(
 		huh.NewNote().
 			Title("提示").
 			Description("测试表单").
 			Next(true),
 	)))
-	model := &formModel{
-		form: form,
-		helpFooterView: func() string {
+	model := &ui.FormModel{
+		Form: form,
+		HelpFooterView: func() string {
 			return "custom footer"
 		},
 	}
@@ -515,7 +516,7 @@ func TestFormModelViewUsesCustomHelpFooterWhenProvided(t *testing.T) {
 	if !strings.Contains(view, "custom footer") {
 		t.Fatalf("View() = %q, want custom footer", view)
 	}
-	if strings.Contains(view, helpFooter) {
+	if strings.Contains(view, ui.HelpFooter) {
 		t.Fatalf("View() should not include default footer when custom footer is provided: %q", view)
 	}
 }
@@ -562,22 +563,22 @@ func TestProviderCustomInputHandledEnterClearsValueAndMutatesSelection(t *testin
 	customInput := "custom-beta"
 	optionsVersion := 0
 
-	field := newProviderCustomModelInput(
+	field := ui.NewProviderCustomModelInput(
 		&customInput,
-		func(raw string) providerCustomRegistration {
+		func(raw string) ui.ProviderCustomRegistration {
 			var added []string
 			selectedModels, customRegistry, added = registerProviderCustomModels(selectedModels, customRegistry, raw)
-			result := providerCustomRegistration{
-				handled: len(parseCustomModelInput(raw)) > 0,
-				added:   len(added) > 0,
+			result := ui.ProviderCustomRegistration{
+				Handled: len(parseCustomModelInput(raw)) > 0,
+				Added:   len(added) > 0,
 			}
-			if result.added {
+			if result.Added {
 				optionsVersion++
 			}
 			return result
 		},
 	)
-	field.WithKeyMap(chineseKeyMap())
+	field.WithKeyMap(ui.ChineseKeyMap())
 
 	_, cmd := field.Update(tea.KeyMsg{Type: tea.KeyEnter})
 
@@ -604,22 +605,22 @@ func TestProviderCustomInputHandledDuplicateStillClearsValue(t *testing.T) {
 	customInput := "custom-alpha"
 	optionsVersion := 0
 
-	field := newProviderCustomModelInput(
+	field := ui.NewProviderCustomModelInput(
 		&customInput,
-		func(raw string) providerCustomRegistration {
+		func(raw string) ui.ProviderCustomRegistration {
 			var added []string
 			selectedModels, customRegistry, added = registerProviderCustomModels(selectedModels, customRegistry, raw)
-			result := providerCustomRegistration{
-				handled: len(parseCustomModelInput(raw)) > 0,
-				added:   len(added) > 0,
+			result := ui.ProviderCustomRegistration{
+				Handled: len(parseCustomModelInput(raw)) > 0,
+				Added:   len(added) > 0,
 			}
-			if result.added {
+			if result.Added {
 				optionsVersion++
 			}
 			return result
 		},
 	)
-	field.WithKeyMap(chineseKeyMap())
+	field.WithKeyMap(ui.ChineseKeyMap())
 
 	_, cmd := field.Update(tea.KeyMsg{Type: tea.KeyEnter})
 
@@ -635,7 +636,7 @@ func TestProviderCustomInputHandledDuplicateStillClearsValue(t *testing.T) {
 }
 
 func TestProviderModelListAvailableFieldHeightReservesOtherViewsGapsAndFooter(t *testing.T) {
-	got := providerModelListAvailableFieldHeight(
+	got := ui.ProviderModelListAvailableFieldHeight(
 		30,
 		"Provider 标识名\n说明\n> demo",
 		"Base URL\n说明\n> https://example.com",
@@ -649,8 +650,8 @@ func TestProviderModelListAvailableFieldHeightReservesOtherViewsGapsAndFooter(t 
 }
 
 func TestProviderModelListAvailableFieldHeightClampsToMinimum(t *testing.T) {
-	got := providerModelListAvailableFieldHeight(6, "a", "b", "c", "d")
-	want := providerModelListTitleLines + providerModelListBaseDescriptionLines + providerModelListOverflowLines + 1
+	got := ui.ProviderModelListAvailableFieldHeight(6, "a", "b", "c", "d")
+	want := ui.ProviderModelListTitleLines + ui.ProviderModelListBaseDescriptionLines + ui.ProviderModelListOverflowLines + 1
 	if got != want {
 		t.Fatalf("available height = %d, want %d", got, want)
 	}
