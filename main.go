@@ -7,7 +7,7 @@ import (
 	"os"
 )
 
-var Version = "1.3.0"
+var Version = "2.0.0"
 
 func main() {
 	restore := initWindowsConsole()
