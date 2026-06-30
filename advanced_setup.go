@@ -1,337 +1,271 @@
 package main
 
 import (
-	"errors"
 	"fmt"
+	"strings"
 
-	"github.com/charmbracelet/huh"
 	"openclaw_config/internal/config"
-	"openclaw_config/internal/ui"
 )
-
-// Provider/NamedAgent 操作常量
-const (
-	actionAdd      = "__add__"
-	actionContinue = "__continue__"
-	actionEdit     = "__edit__"
-	actionDelete   = "__delete__"
-	actionSame     = "__same__"
-	actionCustom   = "__custom__"
-)
-
-// ── Advanced Setup ──────────────────────────────────────────────────────
 
 func (a *App) runAdvancedSetup(fullCfg *config.FullConfig) error {
-	var allModelOpts []huh.Option[string]
-	var allModelOptsWithNone []huh.Option[string]
+	steps := []func() stepResult{
+		// Step 1: Provider 管理
+		func() stepResult {
+			for {
+				clearScreen()
+				printSectionHeader("Step 1: Provider 管理")
+				if len(fullCfg.Providers) > 0 {
+					for _, p := range fullCfg.Providers {
+						fmt.Printf("  %s✔%s %s%s%s  (%s)  [%s]\n", cGreen, cReset, cCyan+cBold, p.Name, cReset, p.BaseUrl, p.ApiFormat)
+					}
+					fmt.Println()
+				}
 
-	step := 1
-	for step >= 1 && step <= 4 {
-		// 每次进入 Step 2 前重建模型选项（Step 1 可能修改了 Providers）
-		if step == 2 {
-			allModelOpts = buildAllModelOpts(fullCfg.Providers)
-			allModelOptsWithNone = append(
-				[]huh.Option[string]{huh.NewOption("（不配置）", "")},
-				allModelOpts...,
-			)
-		}
+				items := []menuItem{
+					{Label: "➕ 添加新 Provider", Desc: ""},
+				}
+				for _, p := range fullCfg.Providers {
+					items = append(items, menuItem{Label: p.Name, Desc: p.BaseUrl})
+				}
+				items = append(items, menuItem{Label: "继续 →", Desc: "进入下一步"})
+				items = append(items, menuItem{Label: "← 返回", Desc: "取消高级配置"})
 
-		var back bool
-		var err error
-		switch step {
-		case 1:
-			err = a.runStep1Providers(fullCfg) // Step 1 是首步，无需返回上一步
-		case 2:
-			back, err = a.runStep2MainAgent(fullCfg, allModelOpts, allModelOptsWithNone)
-		case 3:
-			back, err = a.runStep3SubAgent(fullCfg, allModelOpts, allModelOptsWithNone)
-		case 4:
-			back, err = a.runStep4NamedAgents(fullCfg, allModelOpts)
-		}
-		if err != nil {
-			return err
-		}
-		if back {
-			step--
-		} else {
-			step++
-		}
-	}
-
-	return nil
-}
-
-// ── Step 1: Provider 管理 ──────────────────────────────────────────────────
-
-func (a *App) runStep1Providers(fullCfg *config.FullConfig) error {
-	for {
-		action, err := pickProviderAction(fullCfg.Providers)
-		if err != nil {
-			return err
-		}
-		if action == actionContinue {
-			break
-		}
-		if action == actionAdd {
-			p, cancelled, err := editProvider(config.ProviderConfig{})
-			if err != nil {
-				return err
-			}
-			if !cancelled {
-				fullCfg.Providers = append(fullCfg.Providers, p)
-			}
-		} else {
-			// 选中已有 provider → 弹二级菜单
-			subAction, err := pickProviderItemAction(action)
-			if err != nil {
-				return err
-			}
-			switch subAction {
-			case actionEdit:
-				for i, p := range fullCfg.Providers {
-					if p.Name == action {
-						updated, cancelled, err := editProvider(p)
-						if err != nil {
-							return err
-						}
+				choice := selectMenu("Provider 管理：", items)
+				if choice < 0 || choice == len(items)-1 {
+					return stepExit
+				}
+				if choice == len(items)-2 {
+					if len(fullCfg.Providers) == 0 {
+						printError("请至少添加一个 Provider")
+						waitReturn()
+						continue
+					}
+					return stepNext
+				}
+				if choice == 0 {
+					// 添加
+					p, cancelled := editProviderTerminal(config.ProviderConfig{})
+					if !cancelled {
+						fullCfg.Providers = append(fullCfg.Providers, p)
+					}
+				} else {
+					// 编辑/删除已有
+					idx := choice - 1
+					p := fullCfg.Providers[idx]
+					subItems := []menuItem{
+						{Label: "编辑", Desc: "修改此 Provider"},
+						{Label: "删除", Desc: "删除此 Provider"},
+						{Label: "← 返回", Desc: ""},
+					}
+					subChoice := selectMenu("Provider: "+p.Name, subItems)
+					switch subChoice {
+					case 0:
+						updated, cancelled := editProviderTerminal(p)
 						if !cancelled {
-							fullCfg.Providers[i] = updated
+							fullCfg.Providers[idx] = updated
 						}
-						break
+					case 1:
+						yes, _ := styledConfirm("确认删除 "+p.Name+"？", false)
+						if yes {
+							fullCfg.Providers = append(fullCfg.Providers[:idx], fullCfg.Providers[idx+1:]...)
+							// 清空引用
+							clearProviderRefs(fullCfg, p.Name)
+							printSuccessMsg("已删除: " + p.Name)
+							waitReturn()
+						}
 					}
 				}
-			case actionDelete:
-				if err := deleteProvider(fullCfg, action); err != nil {
-					return err
+			}
+		},
+		// Step 2: 主 Agent 模型
+		func() stepResult {
+			allModels := buildAllModelList(fullCfg.Providers)
+			if len(allModels) == 0 {
+				printError("没有可用的模型，请先返回添加 Provider 并配置模型")
+				waitReturn()
+				return stepBack
+			}
+
+			clearScreen()
+			printSectionHeader("Step 2: 主 Agent 模型")
+			primary := pickModelFromList("主 Agent 模型 (Primary)", allModels, fullCfg.MainAgent.Primary)
+			if primary == "" {
+				return stepBack
+			}
+
+			clearScreen()
+			printSectionHeader("Step 2: 主 Agent 备用模型")
+			fallbackItems := make([]menuItem, len(allModels)+1)
+			for i, m := range allModels {
+				fallbackItems[i] = menuItem{Label: m, Desc: ""}
+			}
+			fallbackItems[len(allModels)] = menuItem{Label: "（不配置）", Desc: "不设置备用模型"}
+			fc := selectMenu("主 Agent 备用模型 (Fallback)：", fallbackItems)
+			var fallback string
+			if fc >= 0 && fc < len(allModels) {
+				fallback = allModels[fc]
+			}
+
+			fullCfg.MainAgent = config.AgentModelConfig{Primary: primary, Fallback: fallback}
+			return stepNext
+		},
+		// Step 3: 子 Agent 模型
+		func() stepResult {
+			clearScreen()
+			printSectionHeader("Step 3: 子 Agent 模型")
+			items := []menuItem{
+				{Label: "同主 Agent（不单独配置）", Desc: "默认继承主模型"},
+				{Label: "单独指定", Desc: "为子 Agent 选择不同模型"},
+				{Label: "← 返回上一步", Desc: ""},
+			}
+			choice := selectMenu("子 Agent 模型：", items)
+			switch choice {
+			case 0:
+				fullCfg.SubAgent = config.AgentModelConfig{}
+				return stepNext
+			case 1:
+				allModels := buildAllModelList(fullCfg.Providers)
+				clearScreen()
+				printSectionHeader("Step 3: 子 Agent 主模型")
+				primary := pickModelFromList("子 Agent 主模型", allModels, fullCfg.SubAgent.Primary)
+				if primary == "" {
+					return stepStay
 				}
+				fullCfg.SubAgent = config.AgentModelConfig{Primary: primary}
+				return stepNext
+			default:
+				return stepBack
 			}
-			// actionBack 直接继续外层 for
-		}
-	}
-	return nil
-}
-
-func pickProviderAction(providers []config.ProviderConfig) (string, error) {
-	var opts []huh.Option[string]
-	for _, p := range providers {
-		label := fmt.Sprintf("%s  (%s)", p.Name, p.BaseUrl)
-		opts = append(opts, huh.NewOption(label, p.Name))
-	}
-	opts = append(opts, huh.NewOption("[+ 添加新 Provider]", actionAdd))
-	if len(providers) > 0 {
-		opts = append(opts, huh.NewOption("[继续 →]", actionContinue))
-	}
-
-	var selected string
-	form := ui.NewForm(huh.NewGroup(
-		huh.NewSelect[string]().
-			Title("Provider 管理").
-			Description(ui.ProviderManagementDescription()).
-			Options(opts...).
-			Value(&selected),
-	))
-	if err := ui.RunForm(form); err != nil {
-		if errors.Is(err, huh.ErrUserAborted) {
-			return "", ErrUserCancelled
-		}
-		return "", err
-	}
-	return selected, nil
-}
-
-func pickProviderItemAction(name string) (string, error) {
-	var selected string
-	form := ui.NewForm(huh.NewGroup(
-		huh.NewSelect[string]().
-			Title(fmt.Sprintf("Provider: %s", name)).
-			Options(
-				huh.NewOption("编辑", actionEdit),
-				huh.NewOption("删除", actionDelete),
-				huh.NewOption("← 返回", actionBack),
-			).
-			Value(&selected),
-	))
-	if err := ui.RunForm(form); err != nil {
-		if errors.Is(err, huh.ErrUserAborted) {
-			return "", ErrUserCancelled
-		}
-		return "", err
-	}
-	return selected, nil
-}
-
-// ── Step 2: 主 Agent 模型 ──────────────────────────────────────────────────
-
-func (a *App) runStep2MainAgent(
-	fullCfg *config.FullConfig,
-	allOpts []huh.Option[string],
-	allOptsWithNone []huh.Option[string],
-) (bool, error) {
-	primary := fullCfg.MainAgent.Primary
-	fallback := fullCfg.MainAgent.Fallback
-	if !containsOptValue(allOpts, primary) {
-		primary = ""
-	}
-	if !containsOptValue(allOptsWithNone, fallback) {
-		fallback = ""
-	}
-	if primary == "" && len(allOpts) > 0 {
-		primary = allOpts[0].Value
-	}
-
-	optsWithBack := append(append([]huh.Option[string](nil), allOpts...), huh.NewOption("← 返回上一步", actionBack))
-
-	form := ui.NewForm(huh.NewGroup(
-		huh.NewSelect[string]().
-			Title("主 Agent 模型 (Primary)").
-			Description("agents.defaults.model.primary").
-			Options(optsWithBack...).
-			Value(&primary),
-		huh.NewSelect[string]().
-			Title("主 Agent 备用模型 (Fallback)").
-			Description("可选，留空表示不配置备用模型").
-			Options(allOptsWithNone...).
-			Value(&fallback),
-	))
-	if err := ui.RunForm(form); err != nil {
-		if errors.Is(err, huh.ErrUserAborted) {
-			return false, ErrUserCancelled
-		}
-		return false, err
-	}
-	if primary == actionBack {
-		return true, nil
-	}
-	fullCfg.MainAgent = config.AgentModelConfig{Primary: primary, Fallback: fallback}
-	return false, nil
-}
-
-// ── Step 3: 子 Agent 模型 ──────────────────────────────────────────────────
-
-func (a *App) runStep3SubAgent(
-	fullCfg *config.FullConfig,
-	allOpts []huh.Option[string],
-	allOptsWithNone []huh.Option[string],
-) (bool, error) {
-	const sameAsMain = actionSame
-	subChoice := sameAsMain
-	if fullCfg.SubAgent.Primary != "" {
-		subChoice = actionCustom
-	}
-
-	form1 := ui.NewForm(huh.NewGroup(
-		huh.NewSelect[string]().
-			Title("子 Agent 模型 (subagents)").
-			Options(
-				huh.NewOption("同主 Agent（不单独配置）", sameAsMain),
-				huh.NewOption("单独指定", actionCustom),
-				huh.NewOption("← 返回上一步", actionBack),
-			).
-			Value(&subChoice),
-	))
-	if err := ui.RunForm(form1); err != nil {
-		if errors.Is(err, huh.ErrUserAborted) {
-			return false, ErrUserCancelled
-		}
-		return false, err
-	}
-	if subChoice == actionBack {
-		return true, nil
-	}
-	if subChoice == sameAsMain {
-		fullCfg.SubAgent = config.AgentModelConfig{}
-		return false, nil
-	}
-
-	// 单独指定
-	primary := fullCfg.SubAgent.Primary
-	fallback := fullCfg.SubAgent.Fallback
-	if !containsOptValue(allOpts, primary) {
-		primary = ""
-	}
-	if !containsOptValue(allOptsWithNone, fallback) {
-		fallback = ""
-	}
-	if primary == "" && len(allOpts) > 0 {
-		primary = allOpts[0].Value
-	}
-
-	form2 := ui.NewForm(huh.NewGroup(
-		huh.NewSelect[string]().
-			Title("子 Agent 主模型 (Primary)").
-			Options(allOpts...).
-			Value(&primary),
-		huh.NewSelect[string]().
-			Title("子 Agent 备用模型 (Fallback)").
-			Options(allOptsWithNone...).
-			Value(&fallback),
-	))
-	if err := ui.RunForm(form2); err != nil {
-		if errors.Is(err, huh.ErrUserAborted) {
-			return false, ErrUserCancelled
-		}
-		return false, err
-	}
-	fullCfg.SubAgent = config.AgentModelConfig{Primary: primary, Fallback: fallback}
-	return false, nil
-}
-
-// ── Step 4: 命名 Agent（可选） ─────────────────────────────────────────────
-func (a *App) runStep4NamedAgents(
-	fullCfg *config.FullConfig,
-	allOpts []huh.Option[string],
-) (bool, error) {
-	const sameAsMain = ""
-	allOptsWithSame := append(
-		[]huh.Option[string]{huh.NewOption("同主 Agent", sameAsMain)},
-		allOpts...,
-	)
-	allOptsWithNone := append(
-		[]huh.Option[string]{huh.NewOption("（不配置）", "")},
-		allOpts...,
-	)
-
-	for {
-		action, err := pickNamedAgentAction(fullCfg.NamedAgents)
-		if err != nil {
-			return false, err
-		}
-
-		switch action {
-		case actionBack:
-			return true, nil
-		case actionContinue:
-			return false, nil
-		default:
-			// 选中已有 Agent → 二级菜单
-			subAction, err := pickNamedAgentItemAction(action)
-			if err != nil {
-				return false, err
-			}
-			switch subAction {
-			case actionEdit:
-				for i, na := range fullCfg.NamedAgents {
-					if na.ID == action {
-						updated, cancelled, err := editNamedAgent(na, allOptsWithSame, allOptsWithNone)
-						if err != nil {
-							return false, err
+		},
+		// Step 4: 命名 Agent
+		func() stepResult {
+			for {
+				clearScreen()
+				printSectionHeader("Step 4: 命名 Agent 管理")
+				if len(fullCfg.NamedAgents) > 0 {
+					for _, na := range fullCfg.NamedAgents {
+						model := na.Model.Primary
+						if model == "" {
+							model = "同主 Agent"
 						}
-						if !cancelled {
-							fullCfg.NamedAgents[i] = updated
-						}
-						break
+						fmt.Printf("  %s%s%s → %s\n", cCyan, na.ID, cReset, model)
 					}
+					fmt.Println()
 				}
-			case actionDelete:
-				newAgents := make([]config.NamedAgentConfig, 0, len(fullCfg.NamedAgents))
+
+				items := []menuItem{
+					{Label: "➕ 添加命名 Agent", Desc: "为特定 agent id 指定不同模型"},
+				}
 				for _, na := range fullCfg.NamedAgents {
-					if na.ID != action {
-						newAgents = append(newAgents, na)
+					items = append(items, menuItem{Label: na.ID, Desc: "编辑 / 删除"})
+				}
+				items = append(items, menuItem{Label: "继续 →", Desc: "完成命名 Agent 配置"})
+				items = append(items, menuItem{Label: "← 返回上一步", Desc: ""})
+
+				choice := selectMenu("命名 Agent：", items)
+				if choice < 0 || choice == len(items)-1 {
+					return stepBack
+				}
+				if choice == len(items)-2 {
+					return stepNext
+				}
+				if choice == 0 {
+					// 添加
+					id, esc := styledInput("Agent ID")
+					if esc || strings.TrimSpace(id) == "" {
+						continue
+					}
+					fullCfg.NamedAgents = append(fullCfg.NamedAgents, config.NamedAgentConfig{
+						ID: strings.TrimSpace(id),
+					})
+				} else {
+					// 编辑/删除
+					idx := choice - 1
+					na := fullCfg.NamedAgents[idx]
+					subItems := []menuItem{
+						{Label: "编辑模型", Desc: "修改此 Agent 的模型"},
+						{Label: "删除", Desc: "删除此命名 Agent"},
+						{Label: "← 返回", Desc: ""},
+					}
+					subChoice := selectMenu("Agent: "+na.ID, subItems)
+					switch subChoice {
+					case 0:
+						allModels := buildAllModelList(fullCfg.Providers)
+						primary := pickModelFromList("模型 for "+na.ID, allModels, na.Model.Primary)
+						if primary != "" {
+							fullCfg.NamedAgents[idx].Model.Primary = primary
+						}
+					case 1:
+						yes, _ := styledConfirm("确认删除 "+na.ID+"？", false)
+						if yes {
+							fullCfg.NamedAgents = append(fullCfg.NamedAgents[:idx], fullCfg.NamedAgents[idx+1:]...)
+							printSuccessMsg("已删除: " + na.ID)
+							waitReturn()
+						}
 					}
 				}
-				fullCfg.NamedAgents = newAgents
 			}
-			// actionBack 继续外层 for
+		},
+	}
+
+	runSteps(steps)
+	return nil
+}
+
+// buildAllModelList 从所有 Provider 构建 "provider/model" 格式的模型列表
+func buildAllModelList(providers []config.ProviderConfig) []string {
+	var list []string
+	for _, p := range providers {
+		for _, m := range p.Models {
+			trimmed := strings.TrimSpace(m)
+			if trimmed != "" {
+				list = append(list, p.Name+"/"+trimmed)
+			}
+		}
+	}
+	return list
+}
+
+// pickModelFromList 从模型列表中选择一个
+func pickModelFromList(title string, models []string, current string) string {
+	items := make([]menuItem, len(models))
+	for i, m := range models {
+		desc := ""
+		if m == current {
+			desc = "当前"
+		}
+		items[i] = menuItem{Label: m, Desc: desc}
+	}
+	items = append(items, menuItem{Label: "← 返回", Desc: ""})
+
+	choice := selectMenu(title+"：", items)
+	if choice < 0 || choice == len(items)-1 {
+		return ""
+	}
+	return models[choice]
+}
+
+// clearProviderRefs 清空引用指定 Provider 的 Agent 模型字段
+func clearProviderRefs(cfg *config.FullConfig, providerName string) {
+	prefix := providerName + "/"
+	if strings.HasPrefix(cfg.MainAgent.Primary, prefix) {
+		cfg.MainAgent.Primary = ""
+	}
+	if strings.HasPrefix(cfg.MainAgent.Fallback, prefix) {
+		cfg.MainAgent.Fallback = ""
+	}
+	if strings.HasPrefix(cfg.SubAgent.Primary, prefix) {
+		cfg.SubAgent.Primary = ""
+	}
+	if strings.HasPrefix(cfg.SubAgent.Fallback, prefix) {
+		cfg.SubAgent.Fallback = ""
+	}
+	for i := range cfg.NamedAgents {
+		if strings.HasPrefix(cfg.NamedAgents[i].Model.Primary, prefix) {
+			cfg.NamedAgents[i].Model.Primary = ""
+		}
+		if strings.HasPrefix(cfg.NamedAgents[i].Model.Fallback, prefix) {
+			cfg.NamedAgents[i].Model.Fallback = ""
 		}
 	}
 }
