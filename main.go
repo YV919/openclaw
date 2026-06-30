@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -19,6 +20,9 @@ func main() {
 
 	app := NewApp()
 	if err := app.Run(); err != nil {
+		if errors.Is(err, ErrUserCancelled) {
+			os.Exit(0)
+		}
 		fmt.Fprintf(os.Stderr, "错误: %v\n", err)
 		os.Exit(1)
 	}

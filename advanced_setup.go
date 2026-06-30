@@ -3,11 +3,20 @@ package main
 import (
 	"errors"
 	"fmt"
-	"os"
 
 	"github.com/charmbracelet/huh"
 	"openclaw_config/internal/config"
 	"openclaw_config/internal/ui"
+)
+
+// Provider/NamedAgent 操作常量
+const (
+	actionAdd      = "__add__"
+	actionContinue = "__continue__"
+	actionEdit     = "__edit__"
+	actionDelete   = "__delete__"
+	actionSame     = "__same__"
+	actionCustom   = "__custom__"
 )
 
 // ── Advanced Setup ──────────────────────────────────────────────────────
@@ -60,10 +69,10 @@ func (a *App) runStep1Providers(fullCfg *config.FullConfig) error {
 		if err != nil {
 			return err
 		}
-		if action == "__continue__" {
+		if action == actionContinue {
 			break
 		}
-		if action == "__add__" {
+		if action == actionAdd {
 			p, cancelled, err := editProvider(config.ProviderConfig{})
 			if err != nil {
 				return err
@@ -78,7 +87,7 @@ func (a *App) runStep1Providers(fullCfg *config.FullConfig) error {
 				return err
 			}
 			switch subAction {
-			case "__edit__":
+			case actionEdit:
 				for i, p := range fullCfg.Providers {
 					if p.Name == action {
 						updated, cancelled, err := editProvider(p)
@@ -91,12 +100,12 @@ func (a *App) runStep1Providers(fullCfg *config.FullConfig) error {
 						break
 					}
 				}
-			case "__delete__":
+			case actionDelete:
 				if err := deleteProvider(fullCfg, action); err != nil {
 					return err
 				}
 			}
-			// "__back__" 直接继续外层 for
+			// actionBack 直接继续外层 for
 		}
 	}
 	return nil
@@ -108,9 +117,9 @@ func pickProviderAction(providers []config.ProviderConfig) (string, error) {
 		label := fmt.Sprintf("%s  (%s)", p.Name, p.BaseUrl)
 		opts = append(opts, huh.NewOption(label, p.Name))
 	}
-	opts = append(opts, huh.NewOption("[+ 添加新 Provider]", "__add__"))
+	opts = append(opts, huh.NewOption("[+ 添加新 Provider]", actionAdd))
 	if len(providers) > 0 {
-		opts = append(opts, huh.NewOption("[继续 →]", "__continue__"))
+		opts = append(opts, huh.NewOption("[继续 →]", actionContinue))
 	}
 
 	var selected string
@@ -123,8 +132,7 @@ func pickProviderAction(providers []config.ProviderConfig) (string, error) {
 	))
 	if err := ui.RunForm(form); err != nil {
 		if errors.Is(err, huh.ErrUserAborted) {
-			fmt.Fprintln(os.Stderr, "已取消")
-			os.Exit(0)
+			return "", ErrUserCancelled
 		}
 		return "", err
 	}
@@ -137,16 +145,15 @@ func pickProviderItemAction(name string) (string, error) {
 		huh.NewSelect[string]().
 			Title(fmt.Sprintf("Provider: %s", name)).
 			Options(
-				huh.NewOption("编辑", "__edit__"),
-				huh.NewOption("删除", "__delete__"),
-				huh.NewOption("← 返回", "__back__"),
+				huh.NewOption("编辑", actionEdit),
+				huh.NewOption("删除", actionDelete),
+				huh.NewOption("← 返回", actionBack),
 			).
 			Value(&selected),
 	))
 	if err := ui.RunForm(form); err != nil {
 		if errors.Is(err, huh.ErrUserAborted) {
-			fmt.Fprintln(os.Stderr, "已取消")
-			os.Exit(0)
+			return "", ErrUserCancelled
 		}
 		return "", err
 	}
@@ -172,7 +179,7 @@ func (a *App) runStep2MainAgent(
 		primary = allOpts[0].Value
 	}
 
-	optsWithBack := append(append([]huh.Option[string](nil), allOpts...), huh.NewOption("← 返回上一步", "__back__"))
+	optsWithBack := append(append([]huh.Option[string](nil), allOpts...), huh.NewOption("← 返回上一步", actionBack))
 
 	form := ui.NewForm(huh.NewGroup(
 		huh.NewSelect[string]().
@@ -188,12 +195,11 @@ func (a *App) runStep2MainAgent(
 	))
 	if err := ui.RunForm(form); err != nil {
 		if errors.Is(err, huh.ErrUserAborted) {
-			fmt.Fprintln(os.Stderr, "已取消")
-			os.Exit(0)
+			return false, ErrUserCancelled
 		}
 		return false, err
 	}
-	if primary == "__back__" {
+	if primary == actionBack {
 		return true, nil
 	}
 	fullCfg.MainAgent = config.AgentModelConfig{Primary: primary, Fallback: fallback}
@@ -207,10 +213,10 @@ func (a *App) runStep3SubAgent(
 	allOpts []huh.Option[string],
 	allOptsWithNone []huh.Option[string],
 ) (bool, error) {
-	const sameAsMain = "__same__"
+	const sameAsMain = actionSame
 	subChoice := sameAsMain
 	if fullCfg.SubAgent.Primary != "" {
-		subChoice = "__custom__"
+		subChoice = actionCustom
 	}
 
 	form1 := ui.NewForm(huh.NewGroup(
@@ -218,19 +224,18 @@ func (a *App) runStep3SubAgent(
 			Title("子 Agent 模型 (subagents)").
 			Options(
 				huh.NewOption("同主 Agent（不单独配置）", sameAsMain),
-				huh.NewOption("单独指定", "__custom__"),
-				huh.NewOption("← 返回上一步", "__back__"),
+				huh.NewOption("单独指定", actionCustom),
+				huh.NewOption("← 返回上一步", actionBack),
 			).
 			Value(&subChoice),
 	))
 	if err := ui.RunForm(form1); err != nil {
 		if errors.Is(err, huh.ErrUserAborted) {
-			fmt.Fprintln(os.Stderr, "已取消")
-			os.Exit(0)
+			return false, ErrUserCancelled
 		}
 		return false, err
 	}
-	if subChoice == "__back__" {
+	if subChoice == actionBack {
 		return true, nil
 	}
 	if subChoice == sameAsMain {
@@ -263,8 +268,7 @@ func (a *App) runStep3SubAgent(
 	))
 	if err := ui.RunForm(form2); err != nil {
 		if errors.Is(err, huh.ErrUserAborted) {
-			fmt.Fprintln(os.Stderr, "已取消")
-			os.Exit(0)
+			return false, ErrUserCancelled
 		}
 		return false, err
 	}
@@ -294,9 +298,9 @@ func (a *App) runStep4NamedAgents(
 		}
 
 		switch action {
-		case "__back__":
+		case actionBack:
 			return true, nil
-		case "__continue__":
+		case actionContinue:
 			return false, nil
 		default:
 			// 选中已有 Agent → 二级菜单
@@ -305,7 +309,7 @@ func (a *App) runStep4NamedAgents(
 				return false, err
 			}
 			switch subAction {
-			case "__edit__":
+			case actionEdit:
 				for i, na := range fullCfg.NamedAgents {
 					if na.ID == action {
 						updated, cancelled, err := editNamedAgent(na, allOptsWithSame, allOptsWithNone)
@@ -318,7 +322,7 @@ func (a *App) runStep4NamedAgents(
 						break
 					}
 				}
-			case "__delete__":
+			case actionDelete:
 				newAgents := make([]config.NamedAgentConfig, 0, len(fullCfg.NamedAgents))
 				for _, na := range fullCfg.NamedAgents {
 					if na.ID != action {
@@ -327,7 +331,7 @@ func (a *App) runStep4NamedAgents(
 				}
 				fullCfg.NamedAgents = newAgents
 			}
-			// "__back__" 继续外层 for
+			// actionBack 继续外层 for
 		}
 	}
 }

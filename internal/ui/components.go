@@ -138,6 +138,9 @@ const (
 // ProviderModelListBaseDescription 模型列表的默认描述文案
 const ProviderModelListBaseDescription = "选择此 provider 支持的预设模型；如需自定义模型，请在下方输入框填写，可一次填写多个"
 
+// providerFieldGapLines Provider 编辑器中各字段之间的间隔行数
+const providerFieldGapLines = 2
+
 // ProviderModelListPresentation 模型列表的展示参数
 type ProviderModelListPresentation struct {
 	FieldHeight      int
@@ -186,7 +189,11 @@ func ProviderModelListOverflowHint(p ProviderModelListPresentation) string {
 	return fmt.Sprintf("↓ 更多模型（还有 %d 项，继续向下查看）", p.HiddenCount)
 }
 
-// ProviderModelListRemainingBelow 获取 MultiSelect 中当前不可见的剩余选项数
+// ProviderModelListRemainingBelow 获取 MultiSelect 中当前不可见的剩余选项数。
+//
+// 注意：此函数通过 reflect 访问 huh.MultiSelect 的未导出字段（filteredOptions、viewport），
+// 非常脆弱——上游 huh 库任何字段重命名都会导致静默返回 (0, false)。
+// 当前兼容 huh v0.6.0；升级 huh 时需验证此处是否仍然有效。
 func ProviderModelListRemainingBelow(field *huh.MultiSelect[string]) (int, bool) {
 	if field == nil {
 		return 0, false
@@ -227,7 +234,7 @@ func ProviderModelListAvailableFieldHeight(windowHeight int, otherViews ...strin
 	for _, view := range otherViews {
 		reserved += lipgloss.Height(view)
 	}
-	reserved += len(otherViews) * ProviderFieldGapLines
+	reserved += len(otherViews) * providerFieldGapLines
 
 	minFieldHeight := ProviderModelListTitleLines + ProviderModelListBaseDescriptionLines + ProviderModelListOverflowLines + 1
 	return max(minFieldHeight, windowHeight-reserved)

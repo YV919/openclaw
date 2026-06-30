@@ -3,7 +3,6 @@ package main
 import (
 	"errors"
 	"fmt"
-	"os"
 
 	"github.com/charmbracelet/huh"
 	"openclaw_config/internal/config"
@@ -21,8 +20,8 @@ func pickNamedAgentAction(agents []config.NamedAgentConfig) (string, error) {
 		label := fmt.Sprintf("%s  (%s)", na.ID, modelLabel)
 		opts = append(opts, huh.NewOption(label, na.ID))
 	}
-	opts = append(opts, huh.NewOption("← 返回上一步", "__back__"))
-	opts = append(opts, huh.NewOption("[继续 →]", "__continue__"))
+	opts = append(opts, huh.NewOption("← 返回上一步", actionBack))
+	opts = append(opts, huh.NewOption("[继续 →]", actionContinue))
 
 	var selected string
 	form := ui.NewForm(huh.NewGroup(
@@ -34,8 +33,7 @@ func pickNamedAgentAction(agents []config.NamedAgentConfig) (string, error) {
 	))
 	if err := ui.RunForm(form); err != nil {
 		if errors.Is(err, huh.ErrUserAborted) {
-			fmt.Fprintln(os.Stderr, "已取消")
-			os.Exit(0)
+			return "", ErrUserCancelled
 		}
 		return "", err
 	}
@@ -49,16 +47,15 @@ func pickNamedAgentItemAction(id string) (string, error) {
 		huh.NewSelect[string]().
 			Title(fmt.Sprintf("命名 Agent: %s", id)).
 			Options(
-				huh.NewOption("编辑", "__edit__"),
-				huh.NewOption("删除", "__delete__"),
-				huh.NewOption("← 返回", "__back__"),
+				huh.NewOption("编辑", actionEdit),
+				huh.NewOption("删除", actionDelete),
+				huh.NewOption("← 返回", actionBack),
 			).
 			Value(&selected),
 	))
 	if err := ui.RunForm(form); err != nil {
 		if errors.Is(err, huh.ErrUserAborted) {
-			fmt.Fprintln(os.Stderr, "已取消")
-			os.Exit(0)
+			return "", ErrUserCancelled
 		}
 		return "", err
 	}

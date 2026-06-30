@@ -38,8 +38,6 @@ func printSuccess(cfg *config.FullConfig) {
 
 func printBanner(updateStatus releaseUpdateStatus) {
 	purple := lipgloss.Color("63")
-	gray := lipgloss.Color("240")
-	yellow := lipgloss.Color("220")
 
 	art := "  ██████╗ ███╗   ███╗██╗  ██╗ █████╗ ██████╗ ██╗\n" +
 		"  ██╔══██╗████╗ ████║╚██╗██╔╝██╔══██╗██╔══██╗██║\n" +
@@ -51,10 +49,8 @@ func printBanner(updateStatus releaseUpdateStatus) {
 	logo := lipgloss.NewStyle().Foreground(purple).Render(art)
 	subtitle := lipgloss.NewStyle().Bold(true).
 		Render("  OpenClaw 配置工具  ·  openclaw-config " + displayVersion(Version))
-	sep := lipgloss.NewStyle().Foreground(gray).
-		Render("  ────────────────────────────────────────────────")
-	note := lipgloss.NewStyle().Foreground(gray).
-		Render("  多 Provider · 多模型 · 主/子/命名 Agent 独立配置")
+	sep := ui.DimStyle().Render("  ────────────────────────────────────────────────")
+	note := ui.DimStyle().Render("  多 Provider · 多模型 · 主/子/命名 Agent 独立配置")
 
 	fmt.Println(logo)
 	fmt.Println()
@@ -62,9 +58,9 @@ func printBanner(updateStatus releaseUpdateStatus) {
 	fmt.Println(sep)
 	fmt.Println(note)
 	if updateLine := buildUpdateStatusLine(updateStatus); updateLine != "" {
-		style := lipgloss.NewStyle().Foreground(gray)
+		style := ui.DimStyle()
 		if updateStatus.HasUpdate {
-			style = lipgloss.NewStyle().Foreground(yellow).Bold(true)
+			style = ui.YellowBold()
 		}
 		fmt.Println(style.Render("  " + updateLine))
 	}

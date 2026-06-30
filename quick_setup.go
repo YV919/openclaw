@@ -3,12 +3,18 @@ package main
 import (
 	"errors"
 	"fmt"
-	"os"
 	"strings"
 
 	"github.com/charmbracelet/huh"
 	"openclaw_config/internal/config"
 	"openclaw_config/internal/ui"
+)
+
+// 快速配置操作常量
+const (
+	actionBack    = "__back__"
+	actionRestore = "__restore__"
+	actionFinish  = "__finish__"
 )
 
 type quickSetupSnapshot struct {
@@ -30,7 +36,7 @@ func (a *App) runQuickSetup(fullCfg *config.FullConfig) error {
 	for step >= 1 && step <= 3 {
 		switch step {
 		case 1:
-			selectedProvider, _, err := a.runQuickStep1Provider(fullCfg)
+			selectedProvider, err := a.runQuickStep1Provider(fullCfg)
 			if err != nil {
 				return err
 			}
@@ -52,12 +58,12 @@ func (a *App) runQuickSetup(fullCfg *config.FullConfig) error {
 				return err
 			}
 			switch action {
-			case "__back__":
+			case actionBack:
 				step--
-			case "__restore__":
+			case actionRestore:
 				restoreQuickSetupSnapshot(fullCfg, snapshot)
 				return nil
-			case "__finish__":
+			case actionFinish:
 				return nil
 			default:
 				return fmt.Errorf("未知快速配置操作: %q", action)
@@ -68,7 +74,7 @@ func (a *App) runQuickSetup(fullCfg *config.FullConfig) error {
 	return nil
 }
 
-func (a *App) runQuickStep1Provider(fullCfg *config.FullConfig) (config.ProviderConfig, bool, error) {
+func (a *App) runQuickStep1Provider(fullCfg *config.FullConfig) (config.ProviderConfig, error) {
 	current := config.ProviderConfig{}
 	if len(fullCfg.Providers) > 0 {
 		current = fullCfg.Providers[0]
@@ -76,15 +82,14 @@ func (a *App) runQuickStep1Provider(fullCfg *config.FullConfig) (config.Provider
 
 	provider, cancelled, err := editProvider(current)
 	if err != nil {
-		return config.ProviderConfig{}, false, err
+		return config.ProviderConfig{}, err
 	}
 	if cancelled {
-		fmt.Fprintln(os.Stderr, "已取消")
-		os.Exit(0)
+		return config.ProviderConfig{}, ErrUserCancelled
 	}
 
 	applyQuickProviderSelection(fullCfg, provider)
-	return provider, false, nil
+	return provider, nil
 }
 
 func (a *App) runQuickStep2PrimaryModel(provider config.ProviderConfig, fullCfg *config.FullConfig) (bool, error) {
@@ -98,7 +103,7 @@ func (a *App) runQuickStep2PrimaryModel(provider config.ProviderConfig, fullCfg 
 		primary = opts[0].Value
 	}
 
-	optsWithBack := append(append([]huh.Option[string](nil), opts...), huh.NewOption("← 返回上一步", "__back__"))
+	optsWithBack := append(append([]huh.Option[string](nil), opts...), huh.NewOption("← 返回上一步", actionBack))
 	form := ui.NewForm(huh.NewGroup(
 		huh.NewSelect[string]().
 			Title("主 Agent 模型").
@@ -108,8 +113,7 @@ func (a *App) runQuickStep2PrimaryModel(provider config.ProviderConfig, fullCfg 
 	))
 	if err := ui.RunForm(form); err != nil {
 		if errors.Is(err, huh.ErrUserAborted) {
-			fmt.Fprintln(os.Stderr, "已取消")
-			os.Exit(0)
+			return false, ErrUserCancelled
 		}
 		return false, err
 	}
@@ -128,16 +132,15 @@ func pickQuickSetupAction(hadAdvanced bool) (string, error) {
 			Title("快速配置确认").
 			Description(quickSetupSummaryDescription(hadAdvanced)).
 			Options(
-				huh.NewOption("完成配置", "__finish__"),
-				huh.NewOption("恢复原样", "__restore__"),
-				huh.NewOption("← 返回上一步", "__back__"),
+				huh.NewOption("完成配置", actionFinish),
+				huh.NewOption("恢复原样", actionRestore),
+				huh.NewOption("← 返回上一步", actionBack),
 			).
 			Value(&selected),
 	))
 	if err := ui.RunForm(form); err != nil {
 		if errors.Is(err, huh.ErrUserAborted) {
-			fmt.Fprintln(os.Stderr, "已取消")
-			os.Exit(0)
+			return "", ErrUserCancelled
 		}
 		return "", err
 	}

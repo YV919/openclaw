@@ -24,6 +24,14 @@ func suppressStdout(f func()) {
 	io.ReadAll(r) //nolint:errcheck
 }
 
+func optionValues(opts []huh.Option[string]) []string {
+	values := make([]string, 0, len(opts))
+	for _, opt := range opts {
+		values = append(values, opt.Value)
+	}
+	return values
+}
+
 func TestProviderManagementDescriptionUsesFormatReminderCopy(t *testing.T) {
 	got := ui.ProviderManagementDescription()
 	want := "同一 Provider 只配置一种模型格式。\nOpenAI 兼容、GPT-5 系列、Anthropic、Gemini 请分开配置。"
@@ -772,10 +780,4 @@ func TestQuickSetupSummaryDescriptionMentionsInheritanceAndRestore(t *testing.T)
 	}
 }
 
-func optionValues(opts []huh.Option[string]) []string {
-	values := make([]string, 0, len(opts))
-	for _, opt := range opts {
-		values = append(values, opt.Value)
-	}
-	return values
-}
+

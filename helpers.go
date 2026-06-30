@@ -25,10 +25,12 @@ func cloneNamedAgents(agents []config.NamedAgentConfig) []config.NamedAgentConfi
 	}
 	cloned := make([]config.NamedAgentConfig, len(agents))
 	copy(cloned, agents)
+	// NamedAgentConfig.Model 是值类型，copy 已做完整拷贝
 	return cloned
 }
 
-// containsOptValue 检查 opts 中是否存在 value 对应的选项
+// containsOptValue 检查 opts 中是否存在 value 对应的选项。
+// 注：此函数依赖 huh.Option 类型，因为调用方需要检查 huh 表单选项是否存在。
 func containsOptValue(opts []huh.Option[string], value string) bool {
 	for _, o := range opts {
 		if o.Value == value {

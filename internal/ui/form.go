@@ -34,9 +34,8 @@ func (m *FormModel) View() string {
 	return v + "\n" + HelpFooter
 }
 
-// PrepareFormForRun 预处理表单：隐藏内置帮助、设置提交/取消命令为 Quit
+// PrepareFormForRun 预处理表单：设置提交/取消命令为 Quit
 func PrepareFormForRun(form *huh.Form) *huh.Form {
-	form.WithShowHelp(false)
 	form.SubmitCmd = tea.Quit
 	form.CancelCmd = tea.Quit
 	return form

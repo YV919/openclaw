@@ -12,6 +12,9 @@ import (
 	"openclaw_config/internal/ui"
 )
 
+// ErrUserCancelled 用户取消操作的哨兵错误
+var ErrUserCancelled = errors.New("user cancelled")
+
 type App struct {
 	configManager *config.ConfigManager
 }
@@ -65,6 +68,10 @@ func (a *App) Run() error {
 
 	mode, err := pickSetupMode(fullCfg)
 	if err != nil {
+		if errors.Is(err, ErrUserCancelled) {
+			fmt.Fprintln(os.Stderr, "已取消")
+			os.Exit(0)
+		}
 		return err
 	}
 
@@ -104,8 +111,7 @@ func pickSetupMode(cfg *config.FullConfig) (setupMode, error) {
 	))
 	if err := ui.RunForm(form); err != nil {
 		if errors.Is(err, huh.ErrUserAborted) {
-			fmt.Fprintln(os.Stderr, "已取消")
-			os.Exit(0)
+			return "", ErrUserCancelled
 		}
 		return "", err
 	}

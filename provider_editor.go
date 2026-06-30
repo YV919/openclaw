@@ -19,7 +19,11 @@ func buildAllModelOpts(providers []config.ProviderConfig) []huh.Option[string] {
 	var opts []huh.Option[string]
 	for _, p := range providers {
 		for _, m := range p.Models {
-			fullID := p.Name + "/" + m
+			trimmed := strings.TrimSpace(m)
+			if trimmed == "" {
+				continue
+			}
+			fullID := p.Name + "/" + trimmed
 			opts = append(opts, huh.NewOption(fullID, fullID))
 		}
 	}
@@ -109,7 +113,10 @@ func presetModelSet() map[string]bool {
 }
 
 func splitProviderModelsForEdit(providerModels []string) ([]string, []string) {
-	presetSet := presetModelSet()
+	return splitProviderModelsWithPreset(providerModels, presetModelSet())
+}
+
+func splitProviderModelsWithPreset(providerModels []string, presetSet map[string]bool) ([]string, []string) {
 	selectedModels := make([]string, 0, len(providerModels))
 	customModels := make([]string, 0, len(providerModels))
 
@@ -129,7 +136,10 @@ func splitProviderModelsForEdit(providerModels []string) ([]string, []string) {
 }
 
 func buildProviderModelOptions(selectedModels []string, customModelRegistry []string) []huh.Option[string] {
-	presetSet := presetModelSet()
+	return buildProviderModelOptionsWithPreset(selectedModels, customModelRegistry, presetModelSet())
+}
+
+func buildProviderModelOptionsWithPreset(selectedModels []string, customModelRegistry []string, presetSet map[string]bool) []huh.Option[string] {
 	selectedSet := make(map[string]bool, len(selectedModels))
 	for _, modelID := range selectedModels {
 		if trimmed := strings.TrimSpace(modelID); trimmed != "" {
@@ -213,6 +223,7 @@ func registerProviderCustomModels(selectedModels []string, customModelRegistry [
 }
 
 func editProvider(p config.ProviderConfig) (config.ProviderConfig, bool, error) {
+	presetSet := presetModelSet()
 	name := p.Name
 	// 格式感知的展示剥离：仅对自动补全 /v1 的格式剥除，google-generative-ai 原样
 	baseUrl := p.BaseUrl
@@ -221,7 +232,7 @@ func editProvider(p config.ProviderConfig) (config.ProviderConfig, bool, error) 
 	}
 	apiKey := p.ApiKey
 
-	selectedModels, customModelRegistry := splitProviderModelsForEdit(p.Models)
+	selectedModels, customModelRegistry := splitProviderModelsWithPreset(p.Models, presetSet)
 	customModelInput := ""
 	modelOptionsVersion := 0
 
@@ -354,9 +365,6 @@ func editProvider(p config.ProviderConfig) (config.ProviderConfig, bool, error) 
 	}, false, nil
 }
 
-// savedConfigNoticeDescription 已移至 ui.SavedConfigNoticeDescription()
-// providerManagementDescription 已移至 ui.ProviderManagementDescription()
-
 // detectFormatFromModels 根据模型列表自动推断 API 格式。
 // 若所有模型格式一致（含单模型情形），直接返回该格式。
 // 若存在冲突，打印黄色警告并返回第一个模型的格式。
@@ -372,11 +380,12 @@ func detectFormatFromModels(modelIDs []string) string {
 		}
 	}
 	// 存在冲突：打印警告，返回第一个模型的格式
-	fmt.Println(ui.FormatWarning("所选模型包含不同 API 格式，将使用第一个模型的格式：", nil))
-	dim := ui.DimStyle()
+	var formatLines []string
 	for _, m := range modelIDs {
-		fmt.Println(dim.Render(fmt.Sprintf("    · %s → %s", m, config.DetectAPIFormat(m))))
+		formatLines = append(formatLines, fmt.Sprintf("%s → %s", m, config.DetectAPIFormat(m)))
 	}
+	fmt.Println(ui.FormatWarning("所选模型包含不同 API 格式，将使用第一个模型的格式：", formatLines))
+	dim := ui.DimStyle()
 	fmt.Println(dim.Render("  建议：将不同格式的模型拆分为独立 provider"))
 	fmt.Println()
 	return config.DetectAPIFormat(modelIDs[0])
